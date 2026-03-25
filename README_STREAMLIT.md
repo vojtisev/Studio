@@ -50,7 +50,7 @@ chmod +x run_media_analytics.sh
 
 ## 📁 Požadované soubory
 
-Aplikace automaticky hledá soubor **`MKP Studio - statistika.csv`** ve stejné složce, kde se nachází skript `streamlit_media_analytics.py`.
+Aplikace načítá soubor **`data/MKP Studio - statistika.csv`** (složka **`data/`** vedle skriptu `streamlit_media_analytics.py`). Volitelně **`data/MKP Studio - YouTube měsíčně.csv`** pro trend po měsících.
 
 ### Struktura CSV souboru
 
@@ -109,8 +109,9 @@ pip3 install streamlit
 ### Soubor CSV nebyl nalezen
 
 Ujistěte se, že:
-1. Soubor `MKP Studio - statistika.csv` je ve stejné složce jako `streamlit_media_analytics.py`
-2. Název souboru je přesně `MKP Studio - statistika.csv` (včetně mezer a velkých písmen)
+1. Existuje složka **`data/`** v kořeni projektu (vedle `streamlit_media_analytics.py`).
+2. Uvnitř je soubor **`MKP Studio - statistika.csv`** (vygeneruje ho `combine_usage_data.py`).
+3. Název souboru je přesně `MKP Studio - statistika.csv` (včetně mezer a velkých písmen).
 
 ### Aplikace se nespustí při přímém spuštění Python skriptu
 
@@ -129,7 +130,7 @@ Přímé spuštění `python3 streamlit_media_analytics.py` nefunguje, protože 
 
 ## 🔄 Aktualizace dat
 
-Pro aktualizaci dat použijte skript `combine_usage_data.py`, který vytvoří nový soubor `MKP Studio - statistika.csv`. Po vytvoření nového souboru stačí obnovit stránku v prohlížeči (F5), aby se načetla nová data.
+Pro aktualizaci dat použijte skript `combine_usage_data.py`, který zapisuje výstupy do složky **`data/`** (např. `data/MKP Studio - statistika.csv`). Po vytvoření nového souboru stačí obnovit stránku v prohlížeči (F5), aby se načetla nová data.
 
 ## 📝 Poznámky
 

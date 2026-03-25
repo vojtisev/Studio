@@ -8,10 +8,11 @@ a vytváří celkové součty pro každou epizodu
 
 import pandas as pd
 import numpy as np
-import glob
 import re
-import os
-from datetime import datetime
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 
 def extract_keywords(name):
     """Extrahuje klíčová slova z názvu"""
@@ -59,22 +60,23 @@ def find_matching_episodes(yt_name, rc_names):
 
 def main():
     print("Načítám data...")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Načtení YouTube dat - hlavní soubor pro párování
-    yt_table_files = glob.glob('*tabulce*.csv')
+    # Načtení YouTube dat - hlavní soubor pro párování (složka data/)
+    yt_table_files = list(DATA_DIR.glob('*tabulce*.csv'))
     if not yt_table_files:
-        print("CHYBA: Soubor 'Data v tabulce.csv' nebyl nalezen!")
+        print(f"CHYBA: V {DATA_DIR.relative_to(BASE_DIR)}/ nebyl nalezen soubor '*tabulce*.csv' (export YouTube).")
         return
-    yt_table_file = yt_table_files[0]
-    print(f"Načítám YouTube soubor pro párování: {yt_table_file}")
+    yt_table_file = max(yt_table_files, key=lambda p: p.stat().st_mtime)
+    print(f"Načítám YouTube soubor pro párování: {yt_table_file.name}")
     yt_table_df = pd.read_csv(yt_table_file, encoding='utf-8')
     
     # Načtení YouTube dat s časovými údaji – měsíční formát (Datum = YYYY-MM) nebo denní
-    yt_graph_files = glob.glob('*grafu*.csv')
+    yt_graph_files = list(DATA_DIR.glob('*grafu*.csv'))
     yt_graph_df = None
     if yt_graph_files:
-        yt_graph_file = yt_graph_files[0]
-        print(f"Načítám YouTube soubor s časovými údaji: {yt_graph_file}")
+        yt_graph_file = max(yt_graph_files, key=lambda p: p.stat().st_mtime)
+        print(f"Načítám YouTube soubor s časovými údaji: {yt_graph_file.name}")
         yt_graph_df = pd.read_csv(yt_graph_file, encoding='utf-8')
         # Podpora měsíčního formátu (2025-06) i denního
         datums = yt_graph_df['Datum'].astype(str).str.strip()
@@ -83,14 +85,13 @@ def main():
         yt_graph_df['Datum'] = pd.to_datetime(yt_graph_df['Datum'], errors='coerce')
         yt_graph_df = yt_graph_df.dropna(subset=['Datum', 'Název videa'])
     
-    # Načtení Red Circle dat - automaticky najde nejnovější soubor
-    rc_files = glob.glob('EpisodePerformanceReport_*.csv')
+    # Načtení Red Circle dat - automaticky najde nejnovější soubor ve složce data/
+    rc_files = list(DATA_DIR.glob('EpisodePerformanceReport_*.csv'))
     if not rc_files:
-        print("CHYBA: Soubor 'EpisodePerformanceReport_*.csv' nebyl nalezen!")
+        print(f"CHYBA: V {DATA_DIR.relative_to(BASE_DIR)}/ nebyl nalezen soubor 'EpisodePerformanceReport_*.csv'.")
         return
-    # Najdeme nejnovější soubor podle data modifikace
-    rc_file = max(rc_files, key=os.path.getmtime)
-    print(f"Načítám Red Circle soubor: {rc_file}")
+    rc_file = max(rc_files, key=lambda p: p.stat().st_mtime)
+    print(f"Načítám Red Circle soubor: {rc_file.name}")
     rc_df = pd.read_csv(rc_file)
     rc_df['PublishDate'] = pd.to_datetime(rc_df['PublishDate'], errors='coerce')
     
@@ -250,7 +251,7 @@ def main():
     result_df = result_df.sort_values(['PodcastName', 'Epizoda'])
     
     # Uložení výsledku
-    output_file = 'MKP Studio - statistika.csv'
+    output_file = DATA_DIR / 'MKP Studio - statistika.csv'
     result_df.to_csv(output_file, index=False, encoding='utf-8-sig')
     
     # Export měsíčních YouTube dat (RedCircle měsíční rozpad nemáme)
@@ -265,11 +266,11 @@ def main():
         # Přidáme PodcastName z výsledné tabulky (epizoda -> pořad)
         ep_to_podcast = result_df[['Epizoda', 'PodcastName']].drop_duplicates('Epizoda').set_index('Epizoda')['PodcastName']
         monthly_df['PodcastName'] = monthly_df['Epizoda'].map(ep_to_podcast).fillna('')
-        monthly_file = 'MKP Studio - YouTube měsíčně.csv'
+        monthly_file = DATA_DIR / 'MKP Studio - YouTube měsíčně.csv'
         monthly_df.to_csv(monthly_file, index=False, encoding='utf-8-sig')
-        print(f"✓ Měsíční YouTube data uložena do: {monthly_file} ({len(monthly_df)} řádků)")
+        print(f"✓ Měsíční YouTube data uložena do: {monthly_file.relative_to(BASE_DIR)} ({len(monthly_df)} řádků)")
     
-    print(f"\n✓ Výsledek uložen do: {output_file}")
+    print(f"\n✓ Výsledek uložen do: {output_file.relative_to(BASE_DIR)}")
     print(f"\nShrnutí:")
     print(f"  Počet epizod: {result_df['Epizoda'].nunique()}")
     print(f"  Počet záznamů: {len(result_df)}")

@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Optional
 
 
-# Cesty k CSV – ve stejné složce jako skript
-DATA_DIR = Path(__file__).resolve().parent
+# CSV ve složce data/ vedle skriptu
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "MKP Studio - statistika.csv"
 MONTHLY_CSV_PATH = DATA_DIR / "MKP Studio - YouTube měsíčně.csv"
 
@@ -248,7 +249,7 @@ def main():
     st.set_page_config(page_title="Analýza online obsahu (RedCircle + YouTube)", layout="wide")
     st.title("Analýza využití online obsahu (RedCircle + YouTube)")
     st.caption(
-        "Data: `MKP Studio - statistika.csv` - sloučená data z RedCircle a YouTube."
+        "Data: `data/MKP Studio - statistika.csv` – sloučená data z RedCircle a YouTube."
     )
 
     try:
@@ -256,8 +257,8 @@ def main():
     except FileNotFoundError:
         st.error(
             f"Soubor s daty nebyl nalezen. "
-            f"Zkontrolujte, prosím, že existuje `MKP Studio - statistika.csv` "
-            f"v adresáři: {DATA_DIR}"
+            f"Zkontrolujte, prosím, že existuje `data/MKP Studio - statistika.csv` "
+            f"v adresáři: {BASE_DIR}"
         )
         return
 
