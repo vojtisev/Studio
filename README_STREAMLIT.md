@@ -16,7 +16,7 @@
 
 ### 2.1 Levý panel – filtry
 
-- **Podcast / pořad:** Výběr jednoho nebo více pořadů. Epizody bez přiřazeného pořadu se zobrazují jako **„Bez pořadu“**. Ve výchozím stavu jsou vybraná všechna pořady (celkový přehled).
+- **Pořad:** Výběr jednoho nebo více pořadů. Epizody bez přiřazeného pořadu se zobrazují jako **„Bez pořadu“**. Ve výchozím stavu jsou vybraná všechna pořady (celkový přehled).
 
 ### 2.2 Horní přehled – čísla (metriky)
 
@@ -24,9 +24,9 @@
 | Ukazatel                       | Co znamená                                                                                                                                             |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Počet epizod**               | Kolik epizod (řádků) zůstane v přehledu po zúžení filtrem pořadu.                                                                                      |
-| **Celkem stažení (RedCircle)** | Součet stažení ze všech zobrazených epizod na straně podcastů.                                                                                         |
-| **Celkem zhlédnutí (YouTube)** | Součet zhlédnutí ze všech zobrazených epizod na YouTube.                                                                                               |
-| **Celkové využití**            | **Stažení + zhlédnutí** dohromady: jedna jednotka = jedno stažení **nebo** jedno zhlédnutí (jedna osoba může obojí, počítají se obě platformy zvlášť). |
+| **Celkem — Stažení**         | Součet **stažení** ze všech zobrazených epizod (Red Circle).                                                                                           |
+| **Celkem — Zhlédnutí**       | Součet **zhlédnutí** ze všech zobrazených epizod (YouTube).                                                                                            |
+| **Celkové využití**          | **Stažení + zhlédnutí** dohromady: jedna jednotka = jedno stažení **nebo** jedno zhlédnutí (jedna osoba může obojí, počítají se obě platformy zvlášť). |
 
 
 U každé metriky je v aplikaci **nápověda** (ikona „?“ u hodnoty) se stejným vysvětlením.
@@ -42,15 +42,15 @@ Pod přehledem jsou **tři odhady ROI** podle toho, kolik korun předpokládáme
 **Náklady ve jmenovateli** nejsou jedna pevná částka, ale součet z `**data/naklady.csv`**:
 
 - za každý **dřívější kalendářní rok** než rok „posledního měsíce statistik“ se započítá **celá** roční částka z tabulky;
-- za **ten rok**, ve kterém leží poslední měsíc ve statistikách, se započítá jen **poměr měsíců**: `náklad_roku × (M / 12)`, kde **M** je číslo posledního měsíce (např. únor → **2/12**).
+- za **ten rok**, ve kterém leží poslední měsíc ve statistikách, se započítá poměr **`(M − 1) / 12`**, kde **M** je číslo posledního měsíce v exportu (např. poslední měsíc **březen → M = 3** → náklady za **2** měsíce roku, tj. **2/12**; kompenzuje to situaci, kdy kalendář už pokročil o měsíc dál než kompletní statistiky).
 
 **Poslední měsíc statistik** se bere z měsíčního exportu: soubor `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`, který při exportu zapisuje `combine_usage_data.py`.
 
 **Vzorec ROI (stejně pro všechny tři varianty hodnoty využití):**
 
-`ROI = ((počet využití × hodnota 1 využití) − náklady) ÷ náklady`
+`ROI = ((počet využití ve výběru × hodnota 1 využití) − alokované náklady) ÷ alokované náklady`
 
-kde **náklady** = výše popsaný součet s poměrem za běžící rok.
+kde **celkové náklady** organizace = výše popsaný součet z `naklady.csv` s poměrem **`(M−1)/12`** za běžící rok (**M** = poslední měsíc ve statistikách), a **alokované náklady** = celkové náklady × (**počet epizod ve filtru** ÷ **počet epizod v celém** statistickém souboru). Při výběru všech pořadů je podíl 100 % — ROI odpovídá celému portfoliu. (Alokace podle *podílu využití* by při stejném Kč/využití dávala pro každý neprázdný výběr stejné procento ROI; proto používáme podíl podle **počtu dílů**, aby se ROI mezi pořady lišilo podle toho, kolik využití připadá na „jeden díl“ výběru.)
 
 **Jak číst výsledek:**
 
@@ -62,7 +62,7 @@ kde **náklady** = výše popsaný součet s poměrem za běžící rok.
 | **Záporné %** | Náklady **nejsou** hodnotou využití pokryté.                                |
 
 
-V aplikaci je u ROI **stručný popisek** a rozbalovací **Rozpis nákladů**. **Využití** v čitateli je stále **součet z aktuálního exportu** (typicky kumulativní od začátku měření); **náklady** jsou časově vázané na poslední měsíc ve statistikách – jde o sjednocený orientační model, ne o účetní závěrku.
+V aplikaci je u ROI **stručný popisek** (včetně poměru epizod a alokovaných Kč) a rozbalovací **Rozpis nákladů**. **Využití** v čitateli odpovídá **aktuálnímu filtru**; **náklady** v jmenovateli jsou **poměřené podle počtu epizod** ve výběru vůči celému souboru. Časová vazba nákladů na poslední měsíc ve statistikách zůstává – jde o orientační model, ne o účetní závěrku.
 
 Čísla se **mění podle filtru pořadu** – ukazují vždy jen vybrané pořady.
 
@@ -70,8 +70,8 @@ V aplikaci je u ROI **stručný popisek** a rozbalovací **Rozpis nákladů**. *
 
 1. **Top epizody podle celkového využití** – Sloupcový graf nejúspěšnějších epizod (stažení + zhlédnutí). Posuvník mění počet epizod v žebříčku.
 2. **Vztah mezi staženími a zhlédnutími** – Každý bod je epizoda: osy = stažení vs. zhlédnutí (kde má pořad větší váhu na které platformě).
-3. **Trend využití v čase (YouTube)** – **Pouze YouTube**, měsíční součty zhlédnutí (Red Circle nemá měsíční rozpad v našich datech). Bez souboru měsíčních dat se trend nevykreslí.
-4. **Analytické vhledy** – Tabulka TOP epizod, koláčový graf podílu podcast vs. YouTube, tabulka souhrnů podle pořadu.
+3. **Trend zhlédnutí v čase (YouTube)** – **Pouze YouTube**, měsíční součty zhlédnutí (Red Circle nemá měsíční rozpad v našich datech). Bez souboru měsíčních dat se trend nevykreslí.
+4. **Analytické vhledy** – Tabulka TOP epizod, koláčový graf podílu celkového využití podle zdroje (Red Circle vs. YouTube), tabulka souhrnů podle pořadu.
 
 Grafy jsou interaktivní (tooltip po najetí myší). U tabulek lze v rozhraní Streamlit často data zkopírovat nebo stáhnout (záleží na verzi prohlížeče a Streamlitu).
 
