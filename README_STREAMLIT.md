@@ -1,140 +1,156 @@
-# Analýza online obsahu - Streamlit aplikace
+# Analýza online obsahu (Streamlit)
 
-Interaktivní webová aplikace pro analýzu a vizualizaci dat o využití online obsahu (podcasty z RedCircle a videa z YouTube).
+---
 
-## 📋 Požadavky
+## 1. Základní informace
 
-Aplikace vyžaduje následující Python balíčky:
-- `streamlit` - webový framework
-- `pandas` - práce s daty
-- `altair` - vytváření grafů
+**Co aplikace je:** Jednoduchý webový přehled (dashboard) nad sloučenými daty z **Red Circle** (stažení podcastů) a **YouTube** (zhlédnutí videí). Data se berou z CSV souborů vygenerovaných skriptem `combine_usage_data.py`.
 
-### Instalace závislostí
+**K čemu slouží:** Rychlý přehled využití obsahu podle epizod a pořadů, srovnání platforem, základní grafy a orientační **odhad návratnosti (ROI)** vůči **nákladům po rocích** (tabulka) a předpokládané „hodnotě“ jednoho využití (stažení nebo zhlédnutí).
 
-Pokud ještě nemáte nainstalované potřebné balíčky, nainstalujte je pomocí:
+**Kdo je „uživatel“ v tomto dokumentu:** kdokoli, kdo si dashboard jen prohlíží (sekce 2), a správce, který aplikaci spouští nebo nasazuje (sekce 3).
+
+---
+
+## 2. Informace pro uživatele dashboardu
+
+### 2.1 Levý panel – filtry
+
+- **Podcast / pořad:** Výběr jednoho nebo více pořadů. Epizody bez přiřazeného pořadu se zobrazují jako **„Bez pořadu“**. Ve výchozím stavu jsou vybraná všechna pořady (celkový přehled).
+
+### 2.2 Horní přehled – čísla (metriky)
+
+
+| Ukazatel                       | Co znamená                                                                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Počet epizod**               | Kolik epizod (řádků) zůstane v přehledu po zúžení filtrem pořadu.                                                                                      |
+| **Celkem stažení (RedCircle)** | Součet stažení ze všech zobrazených epizod na straně podcastů.                                                                                         |
+| **Celkem zhlédnutí (YouTube)** | Součet zhlédnutí ze všech zobrazených epizod na YouTube.                                                                                               |
+| **Celkové využití**            | **Stažení + zhlédnutí** dohromady: jedna jednotka = jedno stažení **nebo** jedno zhlédnutí (jedna osoba může obojí, počítají se obě platformy zvlášť). |
+
+
+U každé metriky je v aplikaci **nápověda** (ikona „?“ u hodnoty) se stejným vysvětlením.
+
+### 2.3 ROI – odhad návratnosti
+
+Pod přehledem jsou **tři odhady ROI** podle toho, kolik korun předpokládáme jako **hodnotu jedné jednotky využití** (jedno stažení nebo jedno zhlédnutí):
+
+- **Pesimistický:** 3 Kč na využití  
+- **Realistický:** 10 Kč na využití  
+- **Optimistický:** 30 Kč na využití
+
+**Náklady ve jmenovateli** nejsou jedna pevná částka, ale součet z `**data/naklady.csv`**:
+
+- za každý **dřívější kalendářní rok** než rok „posledního měsíce statistik“ se započítá **celá** roční částka z tabulky;
+- za **ten rok**, ve kterém leží poslední měsíc ve statistikách, se započítá jen **poměr měsíců**: `náklad_roku × (M / 12)`, kde **M** je číslo posledního měsíce (např. únor → **2/12**).
+
+**Poslední měsíc statistik** se bere z měsíčního exportu: soubor `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`, který při exportu zapisuje `combine_usage_data.py`.
+
+**Vzorec ROI (stejně pro všechny tři varianty hodnoty využití):**
+
+`ROI = ((počet využití × hodnota 1 využití) − náklady) ÷ náklady`
+
+kde **náklady** = výše popsaný součet s poměrem za běžící rok.
+
+**Jak číst výsledek:**
+
+
+| ROI           | Význam                                                                      |
+| ------------- | --------------------------------------------------------------------------- |
+| **0 %**       | Přínos z využití je **rovny** použitým nákladům (v tomto modelu „na nule“). |
+| **Kladné %**  | Přínos **přesahuje** náklady.                                               |
+| **Záporné %** | Náklady **nejsou** hodnotou využití pokryté.                                |
+
+
+V aplikaci je u ROI **stručný popisek** a rozbalovací **Rozpis nákladů**. **Využití** v čitateli je stále **součet z aktuálního exportu** (typicky kumulativní od začátku měření); **náklady** jsou časově vázané na poslední měsíc ve statistikách – jde o sjednocený orientační model, ne o účetní závěrku.
+
+Čísla se **mění podle filtru pořadu** – ukazují vždy jen vybrané pořady.
+
+### 2.4 Grafy a další části stránky
+
+1. **Top epizody podle celkového využití** – Sloupcový graf nejúspěšnějších epizod (stažení + zhlédnutí). Posuvník mění počet epizod v žebříčku.
+2. **Vztah mezi staženími a zhlédnutími** – Každý bod je epizoda: osy = stažení vs. zhlédnutí (kde má pořad větší váhu na které platformě).
+3. **Trend využití v čase (YouTube)** – **Pouze YouTube**, měsíční součty zhlédnutí (Red Circle nemá měsíční rozpad v našich datech). Bez souboru měsíčních dat se trend nevykreslí.
+4. **Analytické vhledy** – Tabulka TOP epizod, koláčový graf podílu podcast vs. YouTube, tabulka souhrnů podle pořadu.
+
+Grafy jsou interaktivní (tooltip po najetí myší). U tabulek lze v rozhraní Streamlit často data zkopírovat nebo stáhnout (záleží na verzi prohlížeče a Streamlitu).
+
+---
+
+## 3. Technické informace (spuštění, data, řešení problémů)
+
+### 3.1 Požadavky
+
+Python balíčky jsou uvedeny v `**requirements.txt`** (mimo jiné `streamlit`, `pandas`, `altair`, `numpy`). Instalace např.:
 
 ```bash
-pip3 install streamlit pandas altair openpyxl
+pip3 install -r requirements.txt
 ```
 
-Nebo pokud používáte `pip`:
+### 3.2 Spuštění lokálně
 
-```bash
-pip install streamlit pandas altair openpyxl
-```
+Z kořene projektu (složka se `streamlit_media_analytics.py`):
 
-## 🚀 Spuštění aplikace
-
-### Metoda 1: Přes Streamlit (doporučeno)
-
-Nejjednodušší způsob, jak spustit aplikaci:
-
-```bash
-python3 -m streamlit run streamlit_media_analytics.py
-```
-
-Aplikace se automaticky otevře v prohlížeči na adrese `http://localhost:8501`.
-
-### Metoda 2: Přes shell skript
-
-Pokud máte vytvořený shell skript `run_media_analytics.sh`:
-
-```bash
-./run_media_analytics.sh
-```
-
-**Poznámka:** Ujistěte se, že má skript spustitelná práva:
-```bash
-chmod +x run_media_analytics.sh
-```
-
-## 📁 Požadované soubory
-
-Aplikace načítá soubor **`data/MKP Studio - statistika.csv`** (složka **`data/`** vedle skriptu `streamlit_media_analytics.py`). Volitelně **`data/MKP Studio - YouTube měsíčně.csv`** pro trend po měsících.
-
-### Struktura CSV souboru
-
-Soubor musí obsahovat následující sloupce:
-- `PodcastName` - název podcastu/pořadu
-- `Epizoda` - název epizody
-- `Datum_publikování` - datum publikace (formát: YYYY-MM-DD)
-- `YouTube_Zhlédnutí` - počet zhlédnutí na YouTube
-- `RedCircle_Downloads` - počet stažení z RedCircle
-- `Celkové_využití` - celkový součet využití
-
-## 🎯 Funkce aplikace
-
-### Přehledové metriky
-- Počet epizod
-- Celkem stažení (RedCircle)
-- Celkem zhlédnutí (YouTube)
-- Celkové využití
-
-### Filtry
-- **Podcast / pořad** - výběr konkrétních podcastů
-- **Období publikace** - výběr časového rozsahu
-
-### Grafy a vizualizace
-1. **Top epizody podle celkového využití** - sloupcový graf s nejúspěšnějšími epizodami
-2. **Vztah mezi staženími a zhlédnutími** - scatter plot ukazující korelaci mezi platformami
-3. **Trend využití v čase** - časová řada s možností agregace po týdnech nebo měsících
-4. **Podíl využití podle platformy** - koláčový graf rozdělení mezi podcasty a YouTube
-
-### Analytické vhledy
-- TOP 5 nejsilnějších epizod
-- Rozdělení využití podle platformy (s koláčovým grafem)
-- Výkon podle podcastu/pořadu - souhrnná tabulka
-
-## 🛠️ Řešení problémů
-
-### Chyba: "command not found: streamlit"
-
-Pokud se vám zobrazí tato chyba, použijte:
-```bash
-python3 -m streamlit run streamlit_media_analytics.py
-```
-
-Místo:
-```bash
-streamlit run streamlit_media_analytics.py
-```
-
-### Chyba: "No module named 'streamlit'"
-
-Nainstalujte Streamlit:
-```bash
-pip3 install streamlit
-```
-
-### Soubor CSV nebyl nalezen
-
-Ujistěte se, že:
-1. Existuje složka **`data/`** v kořeni projektu (vedle `streamlit_media_analytics.py`).
-2. Uvnitř je soubor **`MKP Studio - statistika.csv`** (vygeneruje ho `combine_usage_data.py`).
-3. Název souboru je přesně `MKP Studio - statistika.csv` (včetně mezer a velkých písmen).
-
-### Aplikace se nespustí při přímém spuštění Python skriptu
-
-Aplikace **musí** být spuštěna přes Streamlit. Použijte:
 ```bash
 python3 -m streamlit run streamlit_media_analytics.py
 ```
 
-Přímé spuštění `python3 streamlit_media_analytics.py` nefunguje, protože Streamlit vyžaduje svůj vlastní runtime.
+Nebo skript `./run_media_analytics.sh` (musí být spustitelný: `chmod +x run_media_analytics.sh`).
 
-## 📊 Tipy pro použití
+Aplikace běží typicky na `http://localhost:8501`.
 
-1. **Filtrování dat** - Použijte filtry v levém bočním panelu pro zobrazení konkrétních podcastů nebo časových období
-2. **Interaktivní grafy** - Všechny grafy jsou interaktivní - najetím myši zobrazíte detailní informace
-3. **Export dat** - Data můžete exportovat přímo z tabulek v aplikaci (tlačítko "Download" v pravém horním rohu tabulky)
+**Poznámka:** Aplikaci je nutné spouštět přes Streamlit (`streamlit run`), ne přímo `python3 streamlit_media_analytics.py` bez runtime Streamlitu.
 
-## 🔄 Aktualizace dat
+### 3.3 Datové soubory
 
-Pro aktualizaci dat použijte skript `combine_usage_data.py`, který zapisuje výstupy do složky **`data/`** (např. `data/MKP Studio - statistika.csv`). Po vytvoření nového souboru stačí obnovit stránku v prohlížeči (F5), aby se načetla nová data.
 
-## 📝 Poznámky
+| Soubor                                      | Účel                                                                                                                                                     |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `**data/MKP Studio - statistika.csv`**      | Hlavní přehled epizod (generuje `combine_usage_data.py`).                                                                                                |
+| `**data/MKP Studio - YouTube měsíčně.csv**` | Měsíční zhlédnutí + určení **posledního měsíce** pro náklady a trend.                                                                                    |
+| `**data/naklady.csv`**                      | Sloupce `**rok**`, `**naklady_Kc**` – roční náklady (minulé uzavřené roky celé částky; u běžícího roku plán za 12 měsíců, v ROI se krátí poměrem M/12).  |
+| `**data/statistiky_meta.json**`             | Volitelná kopie **posledního měsíce** (`posledni_mesic_statistik`, formát `YYYY-MM`); zapisuje se při běhu `combine_usage_data.py` spolu s měsíčním CSV. |
 
-- Aplikace automaticky cachuje načtená data pro rychlejší načítání při opakovaném použití
-- Všechny grafy jsou responzivní a přizpůsobí se velikosti okna
-- Data se načítají při každém spuštění aplikace, takže změny v CSV souboru budou viditelné po obnovení stránky
 
+Struktura hlavního statistického CSV: sloupce `PodcastName`, `Epizoda`, `Datum_publikování`, `YouTube_Zhlédnutí`, `RedCircle_Downloads`, `Celkové_využití` (podrobnosti v `**Jak na aktualizaci statistiky podcastů.md`**).
+
+**Příklad `naklady.csv`:**
+
+```csv
+rok,naklady_Kc
+2023,30000
+2024,200000
+2025,800000
+2026,800000
+```
+
+### 3.4 Aktualizace dat
+
+Spusťte z kořene projektu:
+
+```bash
+python3 combine_usage_data.py
+```
+
+Výstupy se zapíší do `**data/**` (včetně měsíčního CSV a `statistiky_meta.json`, pokud je k dispozici export **Data v grafu.csv**). V prohlížeči obnovte stránku (F5). Podrobný postup exportů z YouTube a Red Circle je v `**Jak na aktualizaci statistiky podcastů.md`**.
+
+### 3.5 Řešení problémů
+
+
+| Problém                        | Postup                                                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `command not found: streamlit` | Použijte `python3 -m streamlit run streamlit_media_analytics.py`                                                            |
+| `No module named 'streamlit'`  | `pip3 install streamlit` nebo `pip3 install -r requirements.txt`                                                            |
+| CSV nebyl nalezen              | Zkontrolujte existenci složky `**data/**` a souboru `**MKP Studio - statistika.csv**` přesně s tímto názvem (včetně mezer). |
+| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční export (spusťte `combine_usage_data.py` s **Data v grafu.csv**).                   |
+| Prázdná nebo stará data        | Znovu spusťte `combine_usage_data.py` a obnovte stránku.                                                                    |
+
+
+### 3.6 Poznámky k chování aplikace
+
+- Načtená data jsou v Streamlitu **cachovaná** – po změně CSV může být potřeba obnovit stránku nebo v menu „Rerun“.
+- ROI a všechny součty respektují **aktuální výběr v levém filtru**.
+
+---
+
+*Projekt: MKP Studio – analýza online obsahu (Red Circle + YouTube).*

@@ -1,8 +1,9 @@
+import json
 import streamlit as st
 import pandas as pd
 import altair as alt
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 
 # CSV ve složce data/ vedle skriptu
@@ -10,6 +11,70 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "MKP Studio - statistika.csv"
 MONTHLY_CSV_PATH = DATA_DIR / "MKP Studio - YouTube měsíčně.csv"
+NAKLADY_CSV_PATH = DATA_DIR / "naklady.csv"
+META_JSON_PATH = DATA_DIR / "statistiky_meta.json"
+
+
+def load_naklady_dict() -> Dict[int, float]:
+    if not NAKLADY_CSV_PATH.exists():
+        return {}
+    df = pd.read_csv(NAKLADY_CSV_PATH)
+    col_y = "rok" if "rok" in df.columns else df.columns[0]
+    col_c = "naklady_Kc" if "naklady_Kc" in df.columns else df.columns[1]
+    out: Dict[int, float] = {}
+    for _, row in df.iterrows():
+        try:
+            y = int(row[col_y])
+            out[y] = float(row[col_c])
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def resolve_stats_end_year_month() -> Optional[Tuple[int, int]]:
+    """Poslední kalendářní měsíc pokrytý statistikami (rok, měsíc 1–12)."""
+    if MONTHLY_CSV_PATH.exists():
+        df = pd.read_csv(MONTHLY_CSV_PATH)
+        if len(df) and "Měsíc" in df.columns:
+            mxs = df["Měsíc"].astype(str).str.strip()
+            mx = mxs.max()
+            if mx and len(mx) >= 7:
+                ts = pd.Timestamp(mx + "-01")
+                return (int(ts.year), int(ts.month))
+    if META_JSON_PATH.exists():
+        try:
+            meta = json.loads(META_JSON_PATH.read_text(encoding="utf-8"))
+            pm = meta.get("posledni_mesic_statistik")
+            if pm:
+                s = str(pm).strip()
+                ts = pd.Timestamp(s + "-01") if len(s) == 7 and s[4] == "-" else pd.Timestamp(s)
+                return (int(ts.year), int(ts.month))
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+    return None
+
+
+def total_cost_prorated(naklady: Dict[int, float], end_y: int, end_m: int) -> float:
+    """Plné roky před end_y + poměr roku end_y (end_m měsíců z 12)."""
+    total = 0.0
+    for y in sorted(naklady.keys()):
+        if y < end_y:
+            total += naklady[y]
+        elif y == end_y:
+            total += naklady[y] * (end_m / 12.0)
+    return total
+
+
+def cost_breakdown_lines(naklady: Dict[int, float], end_y: int, end_m: int) -> str:
+    """Krátký textový rozpis pro nápovědu / expander."""
+    parts = []
+    for y in sorted(naklady.keys()):
+        if y < end_y:
+            parts.append(f"{y}: {naklady[y]:,.0f} Kč (celý rok)")
+        elif y == end_y:
+            p = naklady[y] * (end_m / 12.0)
+            parts.append(f"{y}: {naklady[y]:,.0f} × {end_m}/12 = {p:,.0f} Kč")
+    return " · ".join(parts) if parts else ""
 
 
 @st.cache_data
@@ -70,23 +135,81 @@ def render_overview(df: pd.DataFrame):
     n_episodes = len(df)
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Počet epizod", f"{n_episodes:,}")
-    col2.metric("Celkem stažení (RedCircle)", f"{total_downloads:,}")
-    col3.metric("Celkem zhlédnutí (YouTube)", f"{total_views:,}")
-    col4.metric("Celkové využití", f"{total_usage:,}")
+    col1.metric(
+        "Počet epizod",
+        f"{n_episodes:,}",
+        help="Počet řádků v datech po zúžení levým filtrem (jedna řádka = jedna epizoda v přehledu).",
+    )
+    col2.metric(
+        "Celkem stažení (RedCircle)",
+        f"{total_downloads:,}",
+        help="Součet stažení podcastových epizod z Red Circle (podle aktuálního výběru pořadů).",
+    )
+    col3.metric(
+        "Celkem zhlédnutí (YouTube)",
+        f"{total_views:,}",
+        help="Součet zhlédnutí videí na YouTube (podle aktuálního výběru pořadů).",
+    )
+    col4.metric(
+        "Celkové využití",
+        f"{total_usage:,}",
+        help="Stažení + zhlédnutí dohromady: jedna „jednotka využití“ = jedno stažení nebo jedno zhlédnutí.",
+    )
 
-    # Základní ROI ukazatele (roční náklady 800 000 Kč)
-    cost = 800_000
-    if cost > 0 and total_usage > 0:
+    # ROI: náklady z data/naklady.csv + poměr běžícího roku podle posledního měsíce ve statistikách
+    naklady = load_naklady_dict()
+    period = resolve_stats_end_year_month()
+    cost: Optional[float] = None
+    if naklady and period:
+        ey, em = period
+        cost = total_cost_prorated(naklady, ey, em)
+
+    st.markdown("### Odhad ROI podle hodnoty jednoho využití")
+    if not naklady:
+        st.caption(
+            "Doplňte soubor **`data/naklady.csv`** (sloupce `rok`, `naklady_Kc`) s ročními náklady. "
+            "ROI se nezobrazí, dokud soubor neexistuje."
+        )
+    elif not period:
+        st.caption(
+            "Chybí **měsíční export** (`data/MKP Studio - YouTube měsíčně.csv`) nebo **`data/statistiky_meta.json`**. "
+            "Spusťte `combine_usage_data.py` s exportem **Data v grafu.csv** (měsíční data z YouTube)."
+        )
+    elif cost is not None and cost > 0 and total_usage > 0:
         roi_pess = (total_usage * 3 - cost) / cost
         roi_real = (total_usage * 10 - cost) / cost
         roi_opt = (total_usage * 30 - cost) / cost
-
-        st.markdown("### Odhad ROI podle hodnoty jednoho využití")
+        ey, em = period
+        bd = cost_breakdown_lines(naklady, ey, em)
+        st.caption(
+            f"Vzorec: **(počet využití × hodnota 1 využití − náklady) ÷ náklady**. "
+            f"**Náklady** = součet z **`data/naklady.csv`**: celé minulé roky + **{em}/12** plánu za **{ey}**. "
+            f"Období statistik: poslední měsíc v datech **{em:02d}/{ey}**. "
+            "**0 %** = přínos = náklady; **kladné** = nad náklady; **záporné** = pod náklady."
+        )
+        with st.expander("Rozpis nákladů pro ROI", expanded=False):
+            st.write(bd if bd else "(žádný řádek)")
+            st.caption(f"**Součet použitý ve vzorci:** {cost:,.0f} Kč")
         r1, r2, r3 = st.columns(3)
-        r1.metric("ROI – pesimistický (3 Kč/využití)", f"{roi_pess:.0%}")
-        r2.metric("ROI – realistický (10 Kč/využití)", f"{roi_real:.0%}")
-        r3.metric("ROI – optimistický (30 Kč/využití)", f"{roi_opt:.0%}")
+        r1.metric(
+            "ROI – pesimistický (3 Kč/využití)",
+            f"{roi_pess:.0%}",
+            help="Předpoklad: 1 stažení nebo 1 zhlédnutí = 3 Kč v přínosu. Nejníže oceněný scénář.",
+        )
+        r2.metric(
+            "ROI – realistický (10 Kč/využití)",
+            f"{roi_real:.0%}",
+            help="Předpoklad: 1 stažení nebo 1 zhlédnutí = 10 Kč v přínosu. Střední odhad.",
+        )
+        r3.metric(
+            "ROI – optimistický (30 Kč/využití)",
+            f"{roi_opt:.0%}",
+            help="Předpoklad: 1 stažení nebo 1 zhlédnutí = 30 Kč v přínosu. Nejvyšší ocenění jednotky využití.",
+        )
+    elif cost is not None and cost <= 0:
+        st.caption("Součet nákladů je v tomto nastavení 0 – ROI nelze spočítat.")
+    else:
+        st.caption("Pro vypočtení ROI doplňte náklady a měsíční statistiky (viz výše).")
 
 
 def render_filters(df: pd.DataFrame) -> pd.DataFrame:

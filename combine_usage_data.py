@@ -6,6 +6,7 @@ Kombinuje zhlédnutí z YouTube a Downloads z Red Circle podle názvů epizod
 a vytváří celkové součty pro každou epizodu
 """
 
+import json
 import pandas as pd
 import numpy as np
 import re
@@ -269,6 +270,14 @@ def main():
         monthly_file = DATA_DIR / 'MKP Studio - YouTube měsíčně.csv'
         monthly_df.to_csv(monthly_file, index=False, encoding='utf-8-sig')
         print(f"✓ Měsíční YouTube data uložena do: {monthly_file.relative_to(BASE_DIR)} ({len(monthly_df)} řádků)")
+        last_m = monthly_df["Měsíc"].max()
+        meta_path = DATA_DIR / "statistiky_meta.json"
+        meta = {
+            "posledni_mesic_statistik": last_m,
+            "zdroj": "youtube_mesicne_po_exportu",
+        }
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"✓ Meta období statistik: {meta_path.relative_to(BASE_DIR)} (poslední měsíc: {last_m})")
     
     print(f"\n✓ Výsledek uložen do: {output_file.relative_to(BASE_DIR)}")
     print(f"\nShrnutí:")
