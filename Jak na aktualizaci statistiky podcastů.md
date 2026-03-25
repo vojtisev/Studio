@@ -3,6 +3,15 @@
 ## Co skript dělá
 Kombinuje data z YouTube Studio a Red Circle do jednoho přehledného souboru s celkovým využitím epizod.
 
+## Princip práce s časovým obdobím (aktuální nastavení)
+
+Na **obou platformách** při exportu vycházím z časového rozsahu v podstatě **„od začátku věků“** – tedy **od nejdřívějšího data, které daná analytika nabízí**, až po aktuální stav. Důvod: **pracuji vždy jen s jedním aktuálním souborem** od každé platformy; neskládám historii z více exportů za sebou.
+
+- **YouTube Studio:** exportuji data s **pohledem po měsících** (měsíční rozpad ve „Data v grafu“). U **tabulky** používám **předem připravený pohled / uložený filtr** v Analytics – do něj při každé aktualizaci **doplním nové pořady od posledního exportu** (objeví se **nahoře** v seznamu), takže mám přehled o tom, co přibylo.
+- **Red Circle:** při generování reportu volím **všechny podcasty** (celý rozsah pořadů relevantních pro přehled).
+
+Skript sám **nepřepisuje období** – bere vždy obsah posledních stažených CSV ve složce `data/`.
+
 ## Kam ukládat soubory (po přesunu projektu)
 **Vstupní exporty** (YouTube, Red Circle) ukládej do podsložky **`data/`** uvnitř projektu:
 
@@ -14,34 +23,60 @@ Starší exporty můžeš v `data/` nechávat – u více souborů stejného typ
 
 > Skript nepotřebuje běžet z konkrétní složky – cesty si bere sám od souboru `combine_usage_data.py`. Stačí: `python3 combine_usage_data.py` z adresáře `Studio/`, nebo plná cesta ke skriptu.
 
-## Období – co přesně platí
+## Období – technický význam pro skript
 Skript **nesestavuje vlastní časové období**; bere vždy to, co je uvnitř stažených souborů.
 
-| Zdroj | Co v exportu obvykle je | Doporučení při aktualizaci |
-|--------|---------------------------|----------------------------|
-| **YouTube – Data v tabulce** | Celková zhlédnutí na video (podle toho, jaký rozsah zvolíš v exportu v YouTube Studio – často „celé období“ / všechna dostupná data). | Pro srovnání s Red Circle používej export, který pokrývá **stejnou logiku** jako podcastová analytika (typicky kompletní historie kanálu nebo stejné období jako u Red Circle). |
-| **YouTube – Data v grafu** | Měsíční (nebo denní) rozpad zhlédnutí – skript je sečte po epizodách a použije pro součty + soubor `MKP Studio - YouTube měsíčně.csv`. | Volitelné; pokud chybí, berou se součty jen z tabulky. |
-| **Red Circle – EpisodePerformanceReport** | V názvu souboru je **období reportu** (např. `2025_06_01_to_2026_01_31`). Uvnitř jsou **aktuální kumulativní stažení** epizod v tom kontextu, jak Red Circle report generuje. | Stáhni **nejnovější** report z rozhraní. Ve složce můžeš mít více `EpisodePerformanceReport_*.csv` – skript **automaticky vezme soubor s nejnovějším datem úpravy** na disku (ne podle textu v názvu). |
+| Zdroj | Co v exportu obvykle je | Poznámka |
+|--------|---------------------------|----------|
+| **YouTube – Data v tabulce** | Celková zhlédnutí na video v rozsahu, který export zahrnuje (u nás typicky plná historie kanálu / max. rozsah). | Filtr v uloženém pohledu doplňuj o nové pořady po každém exportu. |
+| **YouTube – Data v grafu** | Měsíční rozpad zhlédnutí – skript je sečte po epizodách a použije pro součty + soubor `MKP Studio - YouTube měsíčně.csv`. | Export s měsíčním pohledem. |
+| **Red Circle – EpisodePerformanceReport** | V názvu souboru je období reportu; uvnitř jsou aktuální údaje podle nastavení exportu. | Volba **všech podcastů**; ve složce může být více souborů – skript vezme **nejnovější podle data úpravy** souboru na disku. |
 
-**Shrnutí:** Období si vybíráš **v YouTube Studio a v Red Circle** při exportu. Skript jen spojí to, co v těch souborech je. Chceš-li „statistiky k dnešku“, stáhni čerstvé exporty z obou platforem a ulož je do **`Studio/data/`** (případně přepiš starší soubory stejných jmen).
+## Postup aktualizace dat (krok za krokem)
 
-## Jak připravit data pro spuštění
+1. **Red Circle**  
+   Vygeneruj report pro **všechny podcasty**, v co nejširším časovém rozsahu (od nejdřívějšího možného data po současnost), stáhni CSV `EpisodePerformanceReport_*.csv`.
 
-### 1. Stáhněte soubory z analytik
+2. **YouTube Studio – tabulka**  
+   Otevři **předem připravený pohled** (uložený filtr) v Analytics. **Doplň do filtru nové pořady**, které přibyly od minulého exportu (typicky **nahoře** v seznamu). Exportuj **„Data v tabulce.csv“** (plný rozsah dle nastavení pohledu).
 
+3. **YouTube Studio – graf (měsíčně)**  
+   Nastav export s **pohledem po měsících** a stáhni **„Data v grafu.csv“**.
+
+4. **Uložení do projektu**  
+   Zkopíruj stažené soubory do **`~/Cursor Workspace/MKP/Studio/data/`** (případně přepiš předchozí stejné názvy).
+
+5. **Spuštění skriptu**  
+   V terminálu z kořene projektu:
+   ```bash
+   cd ~/Cursor\ Workspace/MKP/Studio
+   python3 combine_usage_data.py
+   ```
+
+6. **Kontrola výstupů**  
+   Ve složce `data/` se přepíší mimo jiné **`MKP Studio - statistika.csv`** a **`MKP Studio - YouTube měsíčně.csv`**.
+
+7. **Streamlit (lokálně nebo po pushi v cloudu)**  
+   Obnov stránku aplikace (F5), případně znovu nasaď / počkej na rebuild na Streamlit Cloud.
+
+8. **Git (volitelně)**  
+   Pokud verzuješ data v repozitáři: v GitHub Desktopu **commit + push** změn ve složce `data/` a souvisejících souborech.
+
+## Jak připravit data pro první spuštění (shrnutí)
+
+### Soubory z analytik
 **YouTube Studio:**
-- Stáhněte soubor **"Data v tabulce.csv"** (export z YouTube Studio)
-- Volitelně: Stáhněte soubor **"Data v grafu.csv"** (měsíční / časový rozpad zhlédnutí)
+- **"Data v tabulce.csv"**
+- Volitelně doporučeno: **"Data v grafu.csv"** (měsíční rozpad)
 
 **Red Circle:**
-- Stáhněte soubor **"EpisodePerformanceReport_*.csv"** (název obsahuje datum, např. `EpisodePerformanceReport_2025_06_01_to_2025_12_31.csv`)
+- **"EpisodePerformanceReport_*.csv"**
 
-### 2. Uložte soubory do složky
-Exporty uložte do **`~/Cursor Workspace/MKP/Studio/data/`** (ne do kořene projektu).
+### Uložení a příkaz
+Exporty ulož do **`~/Cursor Workspace/MKP/Studio/data/`**, pak:
 
-### 3. Spusťte skript
 ```bash
-cd "~/Cursor Workspace/MKP/Studio"
+cd ~/Cursor\ Workspace/MKP/Studio
 python3 combine_usage_data.py
 ```
 
@@ -60,6 +95,5 @@ Skript hledá soubory ve složce **`data/`**:
 - ✅ Nejnovější Red Circle soubor (`EpisodePerformanceReport_*.csv`) podle data úpravy souboru
 
 ## Tipy
-- Pokud máte starší soubory, můžete je ponechat ve složce - skript použije nejnovější
-- Soubor "Data v grafu.csv" je volitelný - pokud ho nemáte, skript použije celkové hodnoty z "Data v tabulce.csv"
-
+- Starší soubory ve `data/` můžeš nechat – skript použije nejnovější vstupy podle typu.
+- Bez **„Data v grafu.csv“** skript použije pro YouTube součty jen z tabulky; měsíční trend v aplikaci pak nemusí být k dispozici.
