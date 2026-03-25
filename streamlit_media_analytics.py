@@ -1,4 +1,5 @@
 import json
+import math
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -16,10 +17,41 @@ META_JSON_PATH = DATA_DIR / "statistiky_meta.json"
 
 # Jednotné popisky metrik v UI: Stažení, Zhlédnutí, Celkové využití (vnitřně zůstávají anglické názvy sloupců z DataFrame)
 L_POŘAD = "Pořad"
+# 2. pád pro nadpisy typu „podle Pořadu“ (ne .lower() z „Pořad“ → „pořad“)
+L_POŘADU = "Pořadu"
 L_EPIZODA = "Epizoda"
 L_STAŽENÍ = "Stažení"
 L_ZHLÉDNUTÍ = "Zhlédnutí"
+# Metrika + zdroj dat (pro nadpisy/koláč; základ zůstává v L_STAŽENÍ / L_ZHLÉDNUTÍ)
+L_STAŽENÍ_RC_POPIS = f"{L_STAŽENÍ} (Red Circle)"
+L_ZHLÉDNUTÍ_YT_POPIS = f"{L_ZHLÉDNUTÍ} (YouTube)"
 L_CELKEM_VYUŽITÍ = "Celkové využití"
+# 2. pád: „podle celkového využití“, „rozdělení celkového využití“, „z celkového využití“
+L_CELKEM_VYUŽITÍ_GEN = "celkového využití"
+
+# Oddělovač tisíců mezerou (CZ); Altair/D3 locale pro tooltipy a osy
+_CZ_NUMBER_LOCALE = {
+    "decimal": ",",
+    "thousands": " ",
+    "grouping": [3],
+    "currency": ["", " Kč"],
+}
+
+
+def fmt_tisice(n: object) -> str:
+    """Čísla bez desetinných míst, tisíce oddělené mezerou (ne čárkou jako v en_US)."""
+    try:
+        x = float(n)
+        if math.isnan(x) or math.isinf(x):
+            return str(n)
+        return f"{x:,.0f}".replace(",", " ")
+    except (ValueError, TypeError, OverflowError):
+        return str(n)
+
+
+def alt_cz(chart: alt.Chart) -> alt.Chart:
+    """Nastaví locale pro formátování čísel v grafech (tooltipy, osy)."""
+    return chart.configure(locale={"number": _CZ_NUMBER_LOCALE})
 
 
 def dataframe_display_labels(df: pd.DataFrame) -> pd.DataFrame:
@@ -96,17 +128,21 @@ def cost_breakdown_lines(naklady: Dict[int, float], end_y: int, end_m: int) -> s
     parts = []
     for y in sorted(naklady.keys()):
         if y < end_y:
-            parts.append(f"{y}: {naklady[y]:,.0f} Kč (celý rok)")
+            parts.append(f"{y}: {fmt_tisice(naklady[y])} Kč (celý rok)")
         elif y == end_y:
             p = naklady[y] * (pm / 12.0)
-            parts.append(f"{y}: {naklady[y]:,.0f} × ({end_m}−1)/12 = {p:,.0f} Kč")
+            parts.append(f"{y}: {fmt_tisice(naklady[y])} × ({end_m}−1)/12 = {fmt_tisice(p)} Kč")
     return " · ".join(parts) if parts else ""
 
 
 @st.cache_data
-def load_data() -> pd.DataFrame:
-    """Načte data z CSV a převede názvy sloupců na standardní formát."""
-    df = pd.read_csv(CSV_PATH)
+def load_data(csv_path: str, csv_mtime: float) -> pd.DataFrame:
+    """Načte data z CSV a převede názvy sloupců na standardní formát.
+
+    Pozn.: `csv_mtime` se používá jen pro invalidaci cache při ruční editaci souboru.
+    """
+    _ = csv_mtime
+    df = pd.read_csv(csv_path)
 
     # Mapování názvů sloupců z nového formátu na standardní
     column_mapping = {
@@ -139,11 +175,15 @@ def load_data() -> pd.DataFrame:
 
 
 @st.cache_data
-def load_monthly_yt() -> Optional[pd.DataFrame]:
-    """Načte měsíční YouTube data (pokud existuje). RedCircle měsíční rozpad nemá."""
-    if not MONTHLY_CSV_PATH.exists():
+def load_monthly_yt(monthly_csv_path: str, monthly_csv_mtime: float) -> Optional[pd.DataFrame]:
+    """Načte měsíční YouTube data (pokud existuje). RedCircle měsíční rozpad nemá.
+
+    `monthly_csv_mtime` se používá jen pro invalidaci cache při ruční editaci souboru.
+    """
+    _ = monthly_csv_mtime
+    if not Path(monthly_csv_path).exists():
         return None
-    df = pd.read_csv(MONTHLY_CSV_PATH)
+    df = pd.read_csv(monthly_csv_path)
     df["Měsíc"] = pd.to_datetime(df["Měsíc"] + "-01", errors="coerce")
     df["YouTube_Zhlédnutí"] = pd.to_numeric(df["YouTube_Zhlédnutí"], errors="coerce").fillna(0).astype(int)
     if "PodcastName" not in df.columns:
@@ -165,22 +205,22 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
     col1, col2, col3, col4 = st.columns(4)
     col1.metric(
         "Počet epizod",
-        f"{n_episodes:,}",
+        f"{fmt_tisice(n_episodes)}",
         help="Počet řádků v datech po zúžení levým filtrem (jedna řádka = jedna epizoda v přehledu).",
     )
     col2.metric(
         f"Celkem — {L_STAŽENÍ}",
-        f"{total_downloads:,}",
+        f"{fmt_tisice(total_downloads)}",
         help="Součet stažení epizod z Red Circle (podcasty; podle aktuálního výběru pořadů).",
     )
     col3.metric(
         f"Celkem — {L_ZHLÉDNUTÍ}",
-        f"{total_views:,}",
+        f"{fmt_tisice(total_views)}",
         help="Součet zhlédnutí videí na YouTube (podle aktuálního výběru pořadů).",
     )
     col4.metric(
         L_CELKEM_VYUŽITÍ,
-        f"{total_usage:,}",
+        f"{fmt_tisice(total_usage)}",
         help=f"{L_STAŽENÍ} + {L_ZHLÉDNUTÍ}: jedna „jednotka využití“ = jedno stažení nebo jedno zhlédnutí.",
     )
 
@@ -219,16 +259,16 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
             f"Vzorec: **(počet využití ve výběru × hodnota 1 využití − alokované náklady) ÷ alokované náklady**. "
             f"**Celkové náklady** organizace = součet z **`data/naklady.csv`**: celé minulé roky + **({em}−1)/12 = {pm}/12** plánu za **{ey}** "
             f"(poslední měsíc v exportu **{em:02d}/{ey}** mínus jeden měsíc). "
-            f"**Alokované náklady** = celkové náklady × **({n_episodes} epizod ve výběru / {n_episodes_all} v celém souboru) = {share_episodes:.1%}** → **{cost_allocated:,.0f} Kč** z **{cost:,.0f} Kč**. "
+            f"**Alokované náklady** = celkové náklady × **({n_episodes} epizod ve výběru / {n_episodes_all} v celém souboru) = {share_episodes:.1%}** → **{fmt_tisice(cost_allocated)} Kč** z **{fmt_tisice(cost)} Kč**. "
             "**0 %** = přínos = náklady; **kladné** = nad náklady; **záporné** = pod náklady."
         )
         with st.expander("Rozpis nákladů pro ROI", expanded=False):
             st.write(bd if bd else "(žádný řádek)")
             st.caption(
-                f"**Celkové náklady (portfolio):** {cost:,.0f} Kč · "
+                f"**Celkové náklady (portfolio):** {fmt_tisice(cost)} Kč · "
                 f"**Epizod ve výběru / v souboru:** {n_episodes} / {n_episodes_all} ({share_episodes:.1%}) · "
-                f"**{L_CELKEM_VYUŽITÍ} (výběr / celý soubor):** {total_usage:,.0f} / {usage_all_portfolio:,.0f} · "
-                f"**alokované náklady:** {cost_allocated:,.0f} Kč"
+                f"**{L_CELKEM_VYUŽITÍ} (výběr / celý soubor):** {fmt_tisice(total_usage)} / {fmt_tisice(usage_all_portfolio)} · "
+                f"**alokované náklady:** {fmt_tisice(cost_allocated)} Kč"
             )
         r1, r2, r3 = st.columns(3)
         r1.metric(
@@ -246,6 +286,35 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
             f"{roi_opt:.0%}",
             help=f"Předpoklad: 1 jednotka ({L_STAŽENÍ} nebo {L_ZHLÉDNUTÍ}) = 30 Kč v přínosu.",
         )
+        roi_decomp = pd.DataFrame(
+            {
+                "Kč/využití": [3, 10, 30],
+                "Hodnota využití": [total_usage * 3, total_usage * 10, total_usage * 30],
+                "Alokované náklady": [cost_allocated, cost_allocated, cost_allocated],
+            }
+        )
+        roi_long = roi_decomp.melt(
+            id_vars=["Kč/využití"],
+            value_vars=["Hodnota využití", "Alokované náklady"],
+            var_name="Kategorie",
+            value_name="Kč",
+        )
+        roi_chart = (
+            alt.Chart(roi_long)
+            .mark_bar()
+            .encode(
+                x=alt.X("Kč/využití:Q", title="Hodnota 1 využití (Kč)"),
+                y=alt.Y("Kč:Q", title="Kč"),
+                color=alt.Color("Kategorie:N", title=None),
+                tooltip=[
+                    alt.Tooltip("Kategorie:N"),
+                    alt.Tooltip("Kč:Q", format=","),
+                    alt.Tooltip("Kč/využití:Q", title="Kč/využití"),
+                ],
+            )
+            .properties(height=260)
+        )
+        st.altair_chart(alt_cz(roi_chart), use_container_width=True)
     elif cost is not None and cost > 0 and n_episodes_all <= 0:
         st.caption("V datech nejsou žádné epizody – ROI nelze spočítat.")
     elif cost is not None and cost > 0 and total_usage <= 0:
@@ -261,18 +330,45 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
 def render_filters(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.header("Filtry")
     podcasts = sorted(df["PodcastName"].unique())
-    sel_podcasts = st.sidebar.multiselect(f"{L_POŘAD} (filtr)", podcasts, podcasts)
+    if "podcasts_sel" not in st.session_state:
+        st.session_state["podcasts_sel"] = podcasts
+    else:
+        # Sanitizace: pokud se změnil seznam pořadů (např. po ruční editaci CSV),
+        # ponecháme jen ty, které skutečně existují v aktuálním datasetu.
+        st.session_state["podcasts_sel"] = [
+            p for p in st.session_state["podcasts_sel"] if p in podcasts
+        ]
+
+    c_all, c_none = st.sidebar.columns(2)
+    if c_all.button("Všechny"):
+        st.session_state["podcasts_sel"] = podcasts
+    if c_none.button("Žádné"):
+        st.session_state["podcasts_sel"] = []
+
+    sel_podcasts = st.sidebar.multiselect(
+        f"{L_POŘAD} (filtr)",
+        podcasts,
+        st.session_state["podcasts_sel"],
+        key="podcasts_sel",
+    )
+
+    q_show = st.sidebar.text_input("Vyhledat v názvu pořadu", "").strip()
+    q_episode = st.sidebar.text_input("Vyhledat v názvu epizody/dílu", "").strip()
 
     # Filtr podle období publikace jsme na základě požadavku odstranili –
     # ve výchozím stavu zobrazujeme všechny epizody bez časového omezení.
     mask_date = pd.Series(True, index=df.index)
 
-    filtered = df[df["PodcastName"].isin(sel_podcasts) & mask_date]
-    return filtered
+    mask = df["PodcastName"].isin(sel_podcasts) & mask_date
+    if q_show:
+        mask &= df["PodcastName"].astype("string").str.contains(q_show, case=False, na=False)
+    if q_episode:
+        mask &= df["EpisodeName"].astype("string").str.contains(q_episode, case=False, na=False)
+    return df[mask]
 
 
 def chart_top_episodes(df: pd.DataFrame):
-    st.markdown(f"### Top epizody podle {L_CELKEM_VYUŽITÍ.lower()}")
+    st.markdown(f"### Top epizody podle {L_CELKEM_VYUŽITÍ_GEN}")
     top_n = st.slider("Počet epizod v přehledu", 5, 30, 10)
     top = df.sort_values("TotalUsage", ascending=False).head(top_n)
 
@@ -293,18 +389,23 @@ def chart_top_episodes(df: pd.DataFrame):
         )
         .properties(height=400)
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(alt_cz(chart), use_container_width=True)
 
 
 def chart_downloads_vs_views(df: pd.DataFrame):
     st.markdown(f"### Vztah: {L_STAŽENÍ} a {L_ZHLÉDNUTÍ}")
     chart = (
         alt.Chart(df)
-        .mark_circle(size=80, opacity=0.6)
+        .mark_circle(opacity=0.6)
         .encode(
             x=alt.X("Downloads:Q", title=L_STAŽENÍ),
             y=alt.Y("Zhlédnutí:Q", title=L_ZHLÉDNUTÍ),
             color=alt.Color("PodcastName:N", title=L_POŘAD),
+            size=alt.Size(
+                "TotalUsage:Q",
+                title=L_CELKEM_VYUŽITÍ,
+                scale=alt.Scale(range=[30, 400]),
+            ),
             tooltip=[
                 alt.Tooltip("EpisodeName:N", title=L_EPIZODA),
                 alt.Tooltip("PodcastName:N", title=L_POŘAD),
@@ -315,7 +416,7 @@ def chart_downloads_vs_views(df: pd.DataFrame):
         )
         .properties(height=400)
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(alt_cz(chart), use_container_width=True)
 
 
 def chart_time_trend(df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
@@ -330,52 +431,61 @@ def chart_time_trend(df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
         m = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)]
         if len(m) > 0:
             grouped_yt = m.groupby("Měsíc", as_index=False)["YouTube_Zhlédnutí"].sum()
-            chart_yt = (
-                alt.Chart(grouped_yt)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X("Měsíc:T", title="Měsíc"),
-                    y=alt.Y("YouTube_Zhlédnutí:Q", title=L_ZHLÉDNUTÍ),
-                    tooltip=[
-                        alt.Tooltip("Měsíc:T", title="Měsíc"),
-                        alt.Tooltip("YouTube_Zhlédnutí:Q", title=L_ZHLÉDNUTÍ, format=","),
-                    ],
-                )
-                .properties(height=350)
+            nonzero = grouped_yt[grouped_yt["YouTube_Zhlédnutí"] > 0].copy()
+
+            st.checkbox(
+                "Zobrazit i měsíce s 0 zhlédnutí",
+                value=False,
+                key="show_zero_trend",
             )
-            st.altair_chart(chart_yt, use_container_width=True)
+            show_zeros = bool(st.session_state.get("show_zero_trend", False))
+
+            to_plot = grouped_yt if show_zeros else nonzero
+            if len(to_plot) > 0:
+                chart_yt = (
+                    alt.Chart(to_plot)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("Měsíc:T", title="Měsíc"),
+                        y=alt.Y("YouTube_Zhlédnutí:Q", title=L_ZHLÉDNUTÍ),
+                        tooltip=[
+                            alt.Tooltip("Měsíc:T", title="Měsíc"),
+                            alt.Tooltip("YouTube_Zhlédnutí:Q", title=L_ZHLÉDNUTÍ, format=","),
+                        ],
+                    )
+                    .properties(height=350)
+                )
+                st.altair_chart(alt_cz(chart_yt), use_container_width=True)
+            else:
+                st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádná nenulová YouTube zhlédnutí.")
+
+            st.caption(
+                f"Zobrazeno {len(to_plot)} měsíců "
+                f"(nenulové: {len(nonzero)} / celkem: {len(grouped_yt)})."
+            )
         else:
             st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádná YouTube zhlédnutí.")
     else:
         st.info("Pro zobrazení trendu spusťte nejdříve skript `combine_usage_data.py` s exportem měsíčních YouTube dat (soubor Data v grafu.csv ve formátu po měsících).")
 
 
-def render_insights(df: pd.DataFrame):
-    st.markdown("### Analytické vhledy")
-
-    # 1) které epizody táhnou nejvíc
-    top = df.sort_values("TotalUsage", ascending=False).head(5)
-    st.markdown(f"**Nejsilnější epizody** (TOP 5 podle {L_CELKEM_VYUŽITÍ.lower()}):")
-    st.dataframe(
-        dataframe_display_labels(top[["EpisodeName", "PodcastName", "Downloads", "Zhlédnutí", "TotalUsage"]]),
-        use_container_width=True,
-    )
-
-    # 2) podíl stažení vs. zhlédnutí
+def chart_source_mix(df: pd.DataFrame):
     total_downloads = df["Downloads"].sum()
     total_views = df["Zhlédnutí"].sum()
     total_usage = total_downloads + total_views
     share_downloads = total_downloads / total_usage if total_usage else 0
     share_views = total_views / total_usage if total_usage else 0
 
-    st.markdown(f"**Rozdělení {L_CELKEM_VYUŽITÍ.lower()} podle zdroje:**")
-    
-    pie_data = pd.DataFrame({
-        "Platforma": [L_STAŽENÍ, L_ZHLÉDNUTÍ],
-        "Hodnota": [total_downloads, total_views],
-        "Podíl": [share_downloads, share_views]
-    })
-    
+    st.markdown(f"### Rozdělení {L_CELKEM_VYUŽITÍ_GEN} podle zdroje")
+
+    pie_data = pd.DataFrame(
+        {
+            "Platforma": [L_STAŽENÍ_RC_POPIS, L_ZHLÉDNUTÍ_YT_POPIS],
+            "Hodnota": [total_downloads, total_views],
+            "Podíl": [share_downloads, share_views],
+        }
+    )
+
     pie_chart = (
         alt.Chart(pie_data)
         .mark_arc(innerRadius=0)
@@ -384,41 +494,161 @@ def render_insights(df: pd.DataFrame):
             color=alt.Color(
                 "Platforma:N",
                 scale=alt.Scale(
-                    domain=[L_STAŽENÍ, L_ZHLÉDNUTÍ],
-                    range=["#1f77b4", "#ff7f0e"]
+                    domain=[L_STAŽENÍ_RC_POPIS, L_ZHLÉDNUTÍ_YT_POPIS],
+                    range=["#1f77b4", "#ff7f0e"],
                 ),
                 title="Zdroj",
             ),
             tooltip=[
                 "Platforma",
                 alt.Tooltip("Hodnota:Q", title="Hodnota", format=","),
-                alt.Tooltip("Podíl:Q", title="Podíl", format=".0%")
-            ]
+                alt.Tooltip("Podíl:Q", title="Podíl", format=".0%"),
+            ],
         )
-        .properties(height=400, title=f"Podíl {L_CELKEM_VYUŽITÍ.lower()} podle zdroje")
+        .properties(height=400, title=f"Podíl {L_CELKEM_VYUŽITÍ_GEN} podle zdroje")
     )
-    
+
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.altair_chart(pie_chart, use_container_width=True)
+        st.altair_chart(alt_cz(pie_chart), use_container_width=True)
     with col2:
         st.markdown(
-            f"- **Podíl — {L_STAŽENÍ}**: {share_downloads:.0%} z {L_CELKEM_VYUŽITÍ.lower()}.\n"
-            f"- **Podíl — {L_ZHLÉDNUTÍ}**: {share_views:.0%} z {L_CELKEM_VYUŽITÍ.lower()}.\n\n"
-            f"- **Celkem — {L_STAŽENÍ}**: {total_downloads:,}\n"
-            f"- **Celkem — {L_ZHLÉDNUTÍ}**: {total_views:,}\n"
-            f"- **{L_CELKEM_VYUŽITÍ}**: {total_usage:,}"
+            f"- **Podíl — {L_STAŽENÍ_RC_POPIS}**: {share_downloads:.0%}.\n"
+            f"- **Podíl — {L_ZHLÉDNUTÍ_YT_POPIS}**: {share_views:.0%}.\n\n"
+            f"- **Celkem — {L_STAŽENÍ_RC_POPIS}**: {fmt_tisice(total_downloads)}\n"
+            f"- **Celkem — {L_ZHLÉDNUTÍ_YT_POPIS}**: {fmt_tisice(total_views)}\n"
+            f"- **{L_CELKEM_VYUŽITÍ}**: {fmt_tisice(total_usage)}"
         )
 
-    # 3) které podcasty / pořady jsou celkově nejsilnější
-    by_podcast = (
+
+def chart_pareto_top_episodes(df: pd.DataFrame):
+    st.markdown("### Pareto: co pokryje Top využití")
+    top_n = st.slider("Počet epizod v Pareto grafu", 5, 50, 25)
+
+    sorted_df = df.sort_values("TotalUsage", ascending=False)
+    total_usage = float(sorted_df["TotalUsage"].sum())
+    if len(sorted_df) == 0 or total_usage <= 0:
+        st.info("Pro zvolený filtr není možné postavit Pareto graf.")
+        return
+
+    top = sorted_df.head(top_n).copy().reset_index(drop=True)
+    top["Pořadí"] = top.index + 1
+    top["Podíl kumulativně"] = top["TotalUsage"].cumsum() / total_usage
+
+    st.caption(
+        f"Top {len(top)} epizod pokryje {top['Podíl kumulativně'].iloc[-1]:.1%} z {L_CELKEM_VYUŽITÍ_GEN}."
+    )
+
+    chart = (
+        alt.Chart(top)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("Pořadí:Q", title="Pořadí epizody"),
+            y=alt.Y(
+                "Podíl kumulativně:Q",
+                title="Kumulativní podíl",
+                scale=alt.Scale(domain=[0, 1]),
+            ),
+            tooltip=[
+                alt.Tooltip("EpisodeName:N", title=L_EPIZODA),
+                alt.Tooltip("TotalUsage:Q", title=L_CELKEM_VYUŽITÍ, format=","),
+                alt.Tooltip("Podíl kumulativně:Q", title="Kumulativně", format=".0%"),
+            ],
+        )
+        .properties(height=320)
+    )
+
+    st.altair_chart(alt_cz(chart), use_container_width=True)
+
+
+def render_monthly_top_episodes(df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
+    st.markdown(f"### Měsíční top epizoda ({L_ZHLÉDNUTÍ})")
+    if monthly_yt is None or len(monthly_yt) == 0:
+        st.info("Měsíční YouTube data nejsou dostupná.")
+        return
+
+    episodes_in_scope = set(df["EpisodeName"])
+    m = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)].copy()
+    if len(m) == 0:
+        st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádná YouTube zhlédnutí.")
+        return
+
+    monthly_totals = m.groupby("Měsíc", as_index=False)["YouTube_Zhlédnutí"].sum()
+    monthly_totals = monthly_totals[monthly_totals["YouTube_Zhlédnutí"] > 0].copy()
+    if len(monthly_totals) == 0:
+        st.info("Neexistují měsíce s nenulovým využitím zvoleného výběru.")
+        return
+
+    monthly_totals["Měsíc_str"] = monthly_totals["Měsíc"].dt.strftime("%Y-%m")
+    month_options = sorted(monthly_totals["Měsíc_str"].unique().tolist())
+    selected_month_str = st.selectbox("Vyber měsíc", month_options)
+
+    top_n = st.slider("Počet top epizod v měsíci", 3, 10, 5)
+
+    month_dt = monthly_totals.loc[
+        monthly_totals["Měsíc_str"] == selected_month_str, "Měsíc"
+    ].iloc[0]
+
+    m_sel = m[m["Měsíc"] == month_dt]
+    top_month = (
+        m_sel.groupby(["Epizoda", "PodcastName"], as_index=False)["YouTube_Zhlédnutí"]
+        .sum()
+        .sort_values("YouTube_Zhlédnutí", ascending=False)
+        .head(top_n)
+    )
+
+    out = top_month.rename(columns={"Epizoda": "EpisodeName", "YouTube_Zhlédnutí": "Zhlédnutí"})
+    out = out[["EpisodeName", "PodcastName", "Zhlédnutí"]]
+    st.dataframe(dataframe_display_labels(out), use_container_width=True)
+
+
+def render_insights(df: pd.DataFrame):
+    st.markdown("### Analytické vhledy")
+
+    top_n = st.slider("Počet epizod v tabulce vhledů", 5, 20, 10)
+    top = df.sort_values("TotalUsage", ascending=False).head(top_n)
+    st.markdown(f"**Nejsilnější epizody** (TOP {top_n} podle {L_CELKEM_VYUŽITÍ_GEN}):")
+    st.dataframe(
+        dataframe_display_labels(
+            top[["EpisodeName", "PodcastName", "Downloads", "Zhlédnutí", "TotalUsage"]]
+        ),
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+    st.markdown(f"**Celkové využití podle {L_POŘADU}:**")
+
+    by_podcast_total = (
         df.groupby("PodcastName", dropna=False)[["Downloads", "Zhlédnutí", "TotalUsage"]]
         .sum()
         .sort_values("TotalUsage", ascending=False)
         .reset_index()
     )
-    st.markdown(f"**{L_CELKEM_VYUŽITÍ} podle {L_POŘAD.lower()}:**")
-    st.dataframe(dataframe_display_labels(by_podcast), use_container_width=True)
+    top_podcast = 10
+    st.dataframe(
+        dataframe_display_labels(by_podcast_total.head(top_podcast)),
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+    st.markdown(f"**Top pořady podle {L_STAŽENÍ_RC_POPIS}:**")
+    by_podcast_downloads = (
+        df.groupby("PodcastName", dropna=False)["Downloads"]
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    st.dataframe(dataframe_display_labels(by_podcast_downloads.head(top_podcast)), use_container_width=True)
+
+    st.markdown("---")
+    st.markdown(f"**Top pořady podle {L_ZHLÉDNUTÍ_YT_POPIS}:**")
+    by_podcast_views = (
+        df.groupby("PodcastName", dropna=False)["Zhlédnutí"]
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    st.dataframe(dataframe_display_labels(by_podcast_views.head(top_podcast)), use_container_width=True)
 
 
 def main():
@@ -429,7 +659,8 @@ def main():
     )
 
     try:
-        df = load_data()
+        csv_mtime = CSV_PATH.stat().st_mtime if CSV_PATH.exists() else 0.0
+        df = load_data(str(CSV_PATH), csv_mtime)
     except FileNotFoundError:
         st.error(
             f"Soubor s daty nebyl nalezen. "
@@ -445,14 +676,21 @@ def main():
 
     render_overview(filtered, df)
 
+    monthly_mtime = MONTHLY_CSV_PATH.stat().st_mtime if MONTHLY_CSV_PATH.exists() else 0.0
+    monthly_yt = load_monthly_yt(str(MONTHLY_CSV_PATH), monthly_mtime)
+    chart_time_trend(filtered, monthly_yt)
+
+    chart_source_mix(filtered)
+
     col1, col2 = st.columns(2)
     with col1:
         chart_top_episodes(filtered)
     with col2:
         chart_downloads_vs_views(filtered)
 
-    monthly_yt = load_monthly_yt()
-    chart_time_trend(filtered, monthly_yt)
+    chart_pareto_top_episodes(filtered)
+    render_monthly_top_episodes(filtered, monthly_yt)
+
     render_insights(filtered)
 
 

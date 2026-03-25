@@ -69,9 +69,12 @@ V aplikaci je u ROI **stručný popisek** (včetně poměru epizod a alokovanýc
 ### 2.4 Grafy a další části stránky
 
 1. **Top epizody podle celkového využití** – Sloupcový graf nejúspěšnějších epizod (stažení + zhlédnutí). Posuvník mění počet epizod v žebříčku.
-2. **Vztah mezi staženími a zhlédnutími** – Každý bod je epizoda: osy = stažení vs. zhlédnutí (kde má pořad větší váhu na které platformě).
-3. **Trend zhlédnutí v čase (YouTube)** – **Pouze YouTube**, měsíční součty zhlédnutí (Red Circle nemá měsíční rozpad v našich datech). Bez souboru měsíčních dat se trend nevykreslí.
-4. **Analytické vhledy** – Tabulka TOP epizod, koláčový graf podílu celkového využití podle zdroje (Red Circle vs. YouTube), tabulka souhrnů podle pořadu.
+2. **Vztah mezi staženími a zhlédnutími** – Scatter graf: osy = stažení vs. zhlédnutí, bubliny velikost podle celkového využití; barva = pořad.
+3. **Trend zhlédnutí v čase (YouTube)** – **Pouze YouTube**, měsíční součty zhlédnutí. Defaultně se kreslí jen měsíce s nenulovým využitím; volitelně lze přepnout i na zobrazení nulových měsíců.
+4. **Rozdělení celkového využití podle zdroje** – Koláč s popisem zdroje: **Red Circle (stažení)** vs. **YouTube (zhlédnutí)**.
+5. **Pareto: kolik epizod pokryje využití** – kumulativní podíl celkového využití podle pořadí epizod.
+6. **Měsíční top epizoda (YouTube)** – výběr měsíce a zobrazení epizod s nejvyššími zhlédnutími v daném měsíci.
+7. **Analytické vhledy a vyhledávání** – Tabulky TOP epizod a TOP pořadů. V sidebaru lze vyhledat konkrétní pořad nebo epizodu/díl podle textu.
 
 Grafy jsou interaktivní (tooltip po najetí myší). U tabulek lze v rozhraní Streamlit často data zkopírovat nebo stáhnout (záleží na verzi prohlížeče a Streamlitu).
 
