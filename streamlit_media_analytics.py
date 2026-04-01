@@ -5,6 +5,8 @@ import pandas as pd
 import altair as alt
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+import csv
+from pandas.errors import ParserError
 
 
 # CSV ve složce data/ vedle skriptu
@@ -142,7 +144,44 @@ def load_data(csv_path: str, csv_mtime: float) -> pd.DataFrame:
     Pozn.: `csv_mtime` se používá jen pro invalidaci cache při ruční editaci souboru.
     """
     _ = csv_mtime
-    df = pd.read_csv(csv_path)
+    try:
+        df = pd.read_csv(csv_path)
+    except ParserError:
+        # Typicky po ruční editaci: čárka v PodcastName/Epizoda bez uvozovek → víc polí v řádku.
+        # Opravíme řádky na očekávaný počet sloupců (zachováme posledních 5 polí a „nadbytek“
+        # přilepíme zpět k prvnímu sloupci).
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f, delimiter=",", quotechar='"', escapechar="\\")
+            rows = list(reader)
+        if not rows:
+            return pd.DataFrame()
+
+        header = rows[0]
+        expected_cols = len(header)
+        fixed_rows = [header]
+
+        for row in rows[1:]:
+            if len(row) == expected_cols:
+                fixed_rows.append(row)
+                continue
+
+            if len(row) > expected_cols and expected_cols >= 2:
+                # Předpoklad: „navíc“ je jen v prvním textovém sloupci (PodcastName).
+                tail_len = expected_cols - 1
+                head_parts = row[: len(row) - tail_len]
+                tail = row[len(row) - tail_len :]
+                fixed_rows.append([",".join(head_parts)] + tail)
+                continue
+
+            # Pokud je polí málo, doplníme prázdné (ať načtení nespadne).
+            if len(row) < expected_cols:
+                fixed_rows.append(row + [""] * (expected_cols - len(row)))
+                continue
+
+            # Fallback: ořízneme na očekávaný počet.
+            fixed_rows.append(row[:expected_cols])
+
+        df = pd.DataFrame(fixed_rows[1:], columns=fixed_rows[0])
 
     # Mapování názvů sloupců z nového formátu na standardní
     column_mapping = {
@@ -159,10 +198,19 @@ def load_data(csv_path: str, csv_mtime: float) -> pd.DataFrame:
     # zajištění správných typů
     if "PublishDate" in df.columns:
         df["PublishDate"] = pd.to_datetime(df["PublishDate"], errors="coerce")
-    df["Downloads"] = pd.to_numeric(df["Downloads"], errors="coerce").fillna(0).astype(int)
-    df["Zhlédnutí"] = pd.to_numeric(df["Zhlédnutí"], errors="coerce").fillna(0).astype(int)
-    if "TotalUsage" not in df.columns:
-        df["TotalUsage"] = df["Downloads"] + df["Zhlédnutí"]
+    if "Downloads" in df.columns:
+        df["Downloads"] = pd.to_numeric(df["Downloads"], errors="coerce").fillna(0).astype(int)
+    else:
+        df["Downloads"] = 0
+    if "Zhlédnutí" in df.columns:
+        df["Zhlédnutí"] = pd.to_numeric(df["Zhlédnutí"], errors="coerce").fillna(0).astype(int)
+    else:
+        df["Zhlédnutí"] = 0
+
+    if "TotalUsage" in df.columns:
+        df["TotalUsage"] = pd.to_numeric(df["TotalUsage"], errors="coerce").fillna(0).astype(int)
+    else:
+        df["TotalUsage"] = (df["Downloads"] + df["Zhlédnutí"]).astype(int)
 
     # normalizace názvů pořadů – epizody bez pořadu explicitně označíme
     if "PodcastName" not in df.columns:
