@@ -65,7 +65,10 @@ def dataframe_display_labels(df: pd.DataFrame) -> pd.DataFrame:
         "Zhlédnutí": L_ZHLÉDNUTÍ,
         "TotalUsage": L_CELKEM_VYUŽITÍ,
     }
-    return df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
+    out = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
+    out = out.reset_index(drop=True)
+    out.index = pd.RangeIndex(1, len(out) + 1, name="Pořadí")
+    return out
 
 
 def load_naklady_dict() -> Dict[int, float]:
