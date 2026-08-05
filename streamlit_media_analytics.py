@@ -31,6 +31,12 @@ L_CELKEM_VYUŽITÍ = "Celkové využití"
 # 2. pád: „podle celkového využití“, „rozdělení celkového využití“, „z celkového využití“
 L_CELKEM_VYUŽITÍ_GEN = "celkového využití"
 
+# Ochota platit (WTP) za jednotku využití – z dotazníkového šetření VISK 2024
+WTP_CZK = 37
+WTP_SURVEY_URL = (
+    "https://www.hodnota-knihovny.cz/wp-content/uploads/2025/01/infografika_audioknihy_2024_visk.pdf"
+)
+
 # Oddělovač tisíců mezerou (CZ); Altair/D3 locale pro tooltipy a osy
 _CZ_NUMBER_LOCALE = {
     "decimal": ",",
@@ -283,7 +289,7 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
         ey, em = period
         cost = total_cost_prorated(naklady, ey, em)
 
-    st.markdown("### Odhad ROI podle hodnoty jednoho využití")
+    st.markdown(f"### ROI podle ochoty platit (WTP {WTP_CZK} Kč)")
     if not naklady:
         st.caption(
             "Doplňte soubor **`data/naklady.csv`** (sloupce `rok`, `naklady_Kc`) s ročními náklady. "
@@ -300,14 +306,14 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
         # neprázdný výběr — podíl se vykrátí ve vzorci.)
         share_episodes = n_episodes / n_episodes_all
         cost_allocated = cost * share_episodes
-        roi_pess = (total_usage * 3 - cost_allocated) / cost_allocated
-        roi_real = (total_usage * 10 - cost_allocated) / cost_allocated
-        roi_opt = (total_usage * 30 - cost_allocated) / cost_allocated
+        value_usage = total_usage * WTP_CZK
+        roi = (value_usage - cost_allocated) / cost_allocated
         ey, em = period
         bd = cost_breakdown_lines(naklady, ey, em)
         pm = _proration_months_for_year(em)
         st.caption(
-            f"Vzorec: **(počet využití ve výběru × hodnota 1 využití − alokované náklady) ÷ alokované náklady**. "
+            f"Hodnota 1 využití = **{WTP_CZK} Kč** (ochota platit / WTP z [dotazníkového šetření VISK 2024]({WTP_SURVEY_URL})). "
+            f"Vzorec: **(počet využití ve výběru × {WTP_CZK} Kč − alokované náklady) ÷ alokované náklady**. "
             f"**Celkové náklady** organizace = součet z **`data/naklady.csv`**: celé minulé roky + **({em}−1)/12 = {pm}/12** plánu za **{ey}** "
             f"(poslední měsíc v exportu **{em:02d}/{ey}** mínus jeden měsíc). "
             f"**Alokované náklady** = celkové náklady × **({n_episodes} epizod ve výběru / {n_episodes_all} v celém souboru) = {share_episodes:.1%}** → **{fmt_tisice(cost_allocated)} Kč** z **{fmt_tisice(cost)} Kč**. "
@@ -321,46 +327,31 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
                 f"**{L_CELKEM_VYUŽITÍ} (výběr / celý soubor):** {fmt_tisice(total_usage)} / {fmt_tisice(usage_all_portfolio)} · "
                 f"**alokované náklady:** {fmt_tisice(cost_allocated)} Kč"
             )
-        r1, r2, r3 = st.columns(3)
-        r1.metric(
-            "ROI – pesimistický (3 Kč/využití)",
-            f"{roi_pess:.0%}",
-            help=f"Předpoklad: 1 jednotka ({L_STAŽENÍ} nebo {L_ZHLÉDNUTÍ}) = 3 Kč v přínosu.",
+        st.metric(
+            f"ROI (WTP {WTP_CZK} Kč/využití)",
+            f"{roi:.0%}",
+            help=(
+                f"Předpoklad: 1 jednotka ({L_STAŽENÍ} nebo {L_ZHLÉDNUTÍ}) = {WTP_CZK} Kč v přínosu, "
+                f"dle ochoty platit (WTP) z dotazníkového šetření VISK 2024. "
+                f"[Výsledky šetření (PDF)]({WTP_SURVEY_URL})"
+            ),
         )
-        r2.metric(
-            "ROI – realistický (10 Kč/využití)",
-            f"{roi_real:.0%}",
-            help=f"Předpoklad: 1 jednotka ({L_STAŽENÍ} nebo {L_ZHLÉDNUTÍ}) = 10 Kč v přínosu.",
-        )
-        r3.metric(
-            "ROI – optimistický (30 Kč/využití)",
-            f"{roi_opt:.0%}",
-            help=f"Předpoklad: 1 jednotka ({L_STAŽENÍ} nebo {L_ZHLÉDNUTÍ}) = 30 Kč v přínosu.",
-        )
-        roi_decomp = pd.DataFrame(
+        roi_long = pd.DataFrame(
             {
-                "Kč/využití": [3, 10, 30],
-                "Hodnota využití": [total_usage * 3, total_usage * 10, total_usage * 30],
-                "Alokované náklady": [cost_allocated, cost_allocated, cost_allocated],
+                "Kategorie": ["Hodnota využití", "Alokované náklady"],
+                "Kč": [value_usage, cost_allocated],
             }
-        )
-        roi_long = roi_decomp.melt(
-            id_vars=["Kč/využití"],
-            value_vars=["Hodnota využití", "Alokované náklady"],
-            var_name="Kategorie",
-            value_name="Kč",
         )
         roi_chart = (
             alt.Chart(roi_long)
             .mark_bar()
             .encode(
-                x=alt.X("Kč/využití:Q", title="Hodnota 1 využití (Kč)"),
+                x=alt.X("Kategorie:N", title=None, sort=["Hodnota využití", "Alokované náklady"]),
                 y=alt.Y("Kč:Q", title="Kč"),
-                color=alt.Color("Kategorie:N", title=None),
+                color=alt.Color("Kategorie:N", title=None, legend=None),
                 tooltip=[
                     alt.Tooltip("Kategorie:N"),
                     alt.Tooltip("Kč:Q", format=","),
-                    alt.Tooltip("Kč/využití:Q", title="Kč/využití"),
                 ],
             )
             .properties(height=260)

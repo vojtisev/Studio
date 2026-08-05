@@ -6,7 +6,7 @@
 
 **Co aplikace je:** Jednoduchý webový přehled (dashboard) nad sloučenými daty z **Red Circle** (stažení podcastů) a **YouTube** (zhlédnutí videí). Data se berou z CSV souborů vygenerovaných skriptem `combine_usage_data.py`.
 
-**K čemu slouží:** Rychlý přehled využití obsahu podle epizod a pořadů, srovnání platforem, základní grafy a orientační **odhad návratnosti (ROI)** vůči **nákladům po rocích** (tabulka) a předpokládané „hodnotě“ jednoho využití (stažení nebo zhlédnutí).
+**K čemu slouží:** Rychlý přehled využití obsahu podle epizod a pořadů, srovnání platforem, základní grafy a orientační **odhad návratnosti (ROI)** vůči **nákladům po rocích** (tabulka) a **ochotě platit (WTP)** za jedno využití (stažení nebo zhlédnutí).
 
 **Kdo je „uživatel“ v tomto dokumentu:** kdokoli, kdo si dashboard jen prohlíží (sekce 2), a správce, který aplikaci spouští nebo nasazuje (sekce 3).
 
@@ -33,11 +33,9 @@ U každé metriky je v aplikaci **nápověda** (ikona „?“ u hodnoty) se stej
 
 ### 2.3 ROI – odhad návratnosti
 
-Pod přehledem jsou **tři odhady ROI** podle toho, kolik korun předpokládáme jako **hodnotu jedné jednotky využití** (jedno stažení nebo jedno zhlédnutí):
+Pod přehledem je **jeden odhad ROI** podle **ochoty platit (WTP)** za jednotku využití (jedno stažení nebo jedno zhlédnutí):
 
-- **Pesimistický:** 3 Kč na využití  
-- **Realistický:** 10 Kč na využití  
-- **Optimistický:** 30 Kč na využití
+- **WTP: 37 Kč na využití** – hodnota z [dotazníkového šetření VISK 2024](https://www.hodnota-knihovny.cz/wp-content/uploads/2025/01/infografika_audioknihy_2024_visk.pdf) (infografika audioknihy).
 
 **Náklady ve jmenovateli** nejsou jedna pevná částka, ale součet z `**data/naklady.csv`**:
 
@@ -46,9 +44,9 @@ Pod přehledem jsou **tři odhady ROI** podle toho, kolik korun předpokládáme
 
 **Poslední měsíc statistik** se bere z měsíčního exportu: soubor `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`, který při exportu zapisuje `combine_usage_data.py`.
 
-**Vzorec ROI (stejně pro všechny tři varianty hodnoty využití):**
+**Vzorec ROI:**
 
-`ROI = ((počet využití ve výběru × hodnota 1 využití) − alokované náklady) ÷ alokované náklady`
+`ROI = ((počet využití ve výběru × 37 Kč) − alokované náklady) ÷ alokované náklady`
 
 kde **celkové náklady** organizace = výše popsaný součet z `naklady.csv` s poměrem **`(M−1)/12`** za běžící rok (**M** = poslední měsíc ve statistikách), a **alokované náklady** = celkové náklady × (**počet epizod ve filtru** ÷ **počet epizod v celém** statistickém souboru). Při výběru všech pořadů je podíl 100 % — ROI odpovídá celému portfoliu. (Alokace podle *podílu využití* by při stejném Kč/využití dávala pro každý neprázdný výběr stejné procento ROI; proto používáme podíl podle **počtu dílů**, aby se ROI mezi pořady lišilo podle toho, kolik využití připadá na „jeden díl“ výběru.)
 
@@ -62,7 +60,7 @@ kde **celkové náklady** organizace = výše popsaný součet z `naklady.csv` s
 | **Záporné %** | Náklady **nejsou** hodnotou využití pokryté.                                |
 
 
-V aplikaci je u ROI **stručný popisek** (včetně poměru epizod a alokovaných Kč) a rozbalovací **Rozpis nákladů**. **Využití** v čitateli odpovídá **aktuálnímu filtru**; **náklady** v jmenovateli jsou **poměřené podle počtu epizod** ve výběru vůči celému souboru. Časová vazba nákladů na poslední měsíc ve statistikách zůstává – jde o orientační model, ne o účetní závěrku.
+V aplikaci je u ROI **stručný popisek** (včetně poměru epizod, alokovaných Kč a odkazu na šetření) a rozbalovací **Rozpis nákladů**. Graf porovnává **hodnotu využití** (využití × 37 Kč) s **alokovanými náklady**. **Využití** v čitateli odpovídá **aktuálnímu filtru**; **náklady** v jmenovateli jsou **poměřené podle počtu epizod** ve výběru vůči celému souboru. Časová vazba nákladů na poslední měsíc ve statistikách zůstává – jde o orientační model, ne o účetní závěrku.
 
 Čísla se **mění podle filtru pořadu** – ukazují vždy jen vybrané pořady.
 
