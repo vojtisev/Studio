@@ -1,0 +1,10 @@
+{
+  "mcpAllowlist": [
+    "cursor-ide-browser:*"
+  ],
+  "autoRun": {
+    "allow_instructions": [
+      "Allow browser CDP reads of YouTube Studio analytics while extracting our own channel monthly views into local CSV for this project."
+    ]
+  }
+}
