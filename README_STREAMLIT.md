@@ -64,7 +64,7 @@ V aplikaci je u ROI **stručný popisek** (včetně poměru epizod, alokovaných
 
 #### ROI v čase
 
-Pod základní ROI metrikou je také **graf kumulativního ROI v čase**. Jeho smyslem je ukázat, jak se vybraný pilot nebo vybraný pořad postupně přibližuje k cíli **100 % ROI**, tedy k bodu, kdy odhadovaný přínos dorovná alokované náklady.
+Pod základní ROI metrikou je také **graf kumulativního ROI v čase**. Jeho smyslem je ukázat, jak se vybraný pilot nebo vybraný pořad postupně přibližuje k cíli **0 % ROI**, tedy k bodu, kdy odhadovaný přínos **dorovná** alokované náklady (návratnost nákladů). Cokoliv nad 0 % je přínos nad náklady; pod 0 % znamená, že náklady ještě nejsou pokryté.
 
 Graf používá **stejný model jako statické ROI**:
 

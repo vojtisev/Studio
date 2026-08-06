@@ -501,8 +501,8 @@ def render_overview(
             reference = pd.DataFrame(
                 {
                     "Měsíc": reference_months,
-                    "ROI_pct": [100.0] * len(reference_months),
-                    "Řada": ["Cíl 100 %"] * len(reference_months),
+                    "ROI_pct": [0.0] * len(reference_months),
+                    "Řada": ["Cíl 0 % (návratnost nákladů)"] * len(reference_months),
                 }
             )
             actual = roi_series_plot[["Měsíc", "ROI_pct"]].copy()
@@ -518,7 +518,7 @@ def render_overview(
                     strokeDash=alt.StrokeDash(
                         "Řada:N",
                         title=None,
-                        sort=["Kumulativní ROI", "Cíl 100 %"],
+                        sort=["Kumulativní ROI", "Cíl 0 % (návratnost nákladů)"],
                     ),
                     tooltip=[
                         alt.Tooltip("yearmonth(Měsíc):T", title="Měsíc / rok"),
