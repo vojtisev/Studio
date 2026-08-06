@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "MKP Studio - statistika.csv"
 MONTHLY_CSV_PATH = DATA_DIR / "MKP Studio - YouTube měsíčně.csv"
+MONTHLY_RC_CSV_PATH = DATA_DIR / "MKP Studio - Red Circle měsíčně.csv"
 NAKLADY_CSV_PATH = DATA_DIR / "naklady.csv"
 META_JSON_PATH = DATA_DIR / "statistiky_meta.json"
 
@@ -150,14 +151,15 @@ def build_cumulative_roi_series(
     df: pd.DataFrame,
     df_all: pd.DataFrame,
     monthly_yt: Optional[pd.DataFrame],
+    monthly_rc: Optional[pd.DataFrame],
     naklady: Dict[int, float],
     end_y: int,
     end_m: int,
 ) -> pd.DataFrame:
     """Kumulativní ROI po měsících (stejný model jako statické ROI).
 
-    YouTube: skutečná měsíční zhlédnutí. Red Circle: lifetime Downloads epizody
-    se přiřadí k měsíci PublishDate (bez data → poslední měsíc statistik).
+    YouTube i Red Circle berou skutečná měsíční data (pokud jsou k dispozici).
+    Když chybí RC měsíční export, fallback: lifetime Downloads → měsíc PublishDate.
     """
     empty = pd.DataFrame(columns=["Měsíc", "Využití kumul", "Hodnota kumul", "Náklady alok", "ROI"])
     n_all = len(df_all)
@@ -167,19 +169,31 @@ def build_cumulative_roi_series(
 
     share_episodes = n_sel / n_all
     end_ts = pd.Timestamp(year=end_y, month=end_m, day=1)
+    episodes_in_scope = set(df["EpisodeName"])
 
-    # Red Circle → měsíc publikace
-    rc = df[["EpisodeName", "Downloads", "PublishDate"]].copy()
-    rc["rc_month"] = rc["PublishDate"].dt.to_period("M").dt.to_timestamp()
-    missing_pub = rc["rc_month"].isna()
-    rc.loc[missing_pub, "rc_month"] = end_ts
-    rc_by_month = rc.groupby("rc_month", as_index=False)["Downloads"].sum()
-    rc_by_month = rc_by_month.rename(columns={"Downloads": "rc_month_usage"})
+    # Red Circle měsíčně (preferováno) / fallback na měsíc publikace
+    rc_by_month = pd.DataFrame(columns=["Měsíc", "rc_month_usage"])
+    if monthly_rc is not None and len(monthly_rc) > 0:
+        m_rc = monthly_rc[monthly_rc["Epizoda"].isin(episodes_in_scope)].copy()
+        if len(m_rc) > 0:
+            rc_by_month = (
+                m_rc.groupby("Měsíc", as_index=False)["RedCircle_Downloads"]
+                .sum()
+                .rename(columns={"RedCircle_Downloads": "rc_month_usage"})
+            )
+    if rc_by_month.empty:
+        rc = df[["EpisodeName", "Downloads", "PublishDate"]].copy()
+        rc["Měsíc"] = rc["PublishDate"].dt.to_period("M").dt.to_timestamp()
+        rc.loc[rc["Měsíc"].isna(), "Měsíc"] = end_ts
+        rc_by_month = (
+            rc.groupby("Měsíc", as_index=False)["Downloads"]
+            .sum()
+            .rename(columns={"Downloads": "rc_month_usage"})
+        )
 
     # YouTube měsíčně pro epizody ve výběru
     yt_by_month = pd.DataFrame(columns=["Měsíc", "yt_month_usage"])
     if monthly_yt is not None and len(monthly_yt) > 0:
-        episodes_in_scope = set(df["EpisodeName"])
         m = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)].copy()
         if len(m) > 0:
             yt_by_month = (
@@ -188,18 +202,20 @@ def build_cumulative_roi_series(
                 .rename(columns={"YouTube_Zhlédnutí": "yt_month_usage"})
             )
 
-    # Začátek řady: nejdřívější z (leden prvního roku nákladů, první publikace, první nenulový YT měsíc)
+    # Začátek řady: nejdřívější z (leden prvního roku nákladů, první RC/YT aktivita)
     start_candidates: list[pd.Timestamp] = []
     if naklady:
         start_candidates.append(pd.Timestamp(year=min(naklady.keys()), month=1, day=1))
     if len(rc_by_month) > 0:
-        start_candidates.append(pd.Timestamp(rc_by_month["rc_month"].min()))
+        rc_nz = rc_by_month[rc_by_month["rc_month_usage"] > 0]
+        start_candidates.append(
+            pd.Timestamp((rc_nz if len(rc_nz) else rc_by_month)["Měsíc"].min())
+        )
     if len(yt_by_month) > 0:
         yt_nz = yt_by_month[yt_by_month["yt_month_usage"] > 0]
-        if len(yt_nz) > 0:
-            start_candidates.append(pd.Timestamp(yt_nz["Měsíc"].min()))
-        else:
-            start_candidates.append(pd.Timestamp(yt_by_month["Měsíc"].min()))
+        start_candidates.append(
+            pd.Timestamp((yt_nz if len(yt_nz) else yt_by_month)["Měsíc"].min())
+        )
     if not start_candidates:
         return empty
     start_ts = min(start_candidates)
@@ -209,7 +225,7 @@ def build_cumulative_roi_series(
     months = pd.date_range(start=start_ts, end=end_ts, freq="MS")
     series = pd.DataFrame({"Měsíc": months})
     series = series.merge(yt_by_month, on="Měsíc", how="left")
-    series = series.merge(rc_by_month, left_on="Měsíc", right_on="rc_month", how="left")
+    series = series.merge(rc_by_month, on="Měsíc", how="left")
     series["yt_month_usage"] = series["yt_month_usage"].fillna(0).astype(float)
     series["rc_month_usage"] = series["rc_month_usage"].fillna(0).astype(float)
     series["usage_month"] = series["yt_month_usage"] + series["rc_month_usage"]
@@ -316,7 +332,7 @@ def load_data(csv_path: str, csv_mtime: float) -> pd.DataFrame:
 
 @st.cache_data
 def load_monthly_yt(monthly_csv_path: str, monthly_csv_mtime: float) -> Optional[pd.DataFrame]:
-    """Načte měsíční YouTube data (pokud existuje). RedCircle měsíční rozpad nemá.
+    """Načte měsíční YouTube data (pokud existuje).
 
     `monthly_csv_mtime` se používá jen pro invalidaci cache při ruční editaci souboru.
     """
@@ -333,7 +349,36 @@ def load_monthly_yt(monthly_csv_path: str, monthly_csv_mtime: float) -> Optional
     return df
 
 
-def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
+@st.cache_data
+def load_monthly_rc(monthly_csv_path: str, monthly_csv_mtime: float) -> Optional[pd.DataFrame]:
+    """Načte měsíční Red Circle stažení po epizodách (pokud existuje export).
+
+    `monthly_csv_mtime` se používá jen pro invalidaci cache při ruční editaci souboru.
+    """
+    _ = monthly_csv_mtime
+    if not Path(monthly_csv_path).exists():
+        return None
+    df = pd.read_csv(monthly_csv_path)
+    df["Měsíc"] = pd.to_datetime(df["Měsíc"].astype(str) + "-01", errors="coerce")
+    df["RedCircle_Downloads"] = (
+        pd.to_numeric(df["RedCircle_Downloads"], errors="coerce").fillna(0).astype(int)
+    )
+    if "Epizoda" not in df.columns:
+        df["Epizoda"] = ""
+    df["Epizoda"] = df["Epizoda"].fillna("").astype("string")
+    if "PodcastName" not in df.columns:
+        df["PodcastName"] = ""
+    df["PodcastName"] = df["PodcastName"].fillna("").astype("string")
+    df.loc[df["PodcastName"].str.strip() == "", "PodcastName"] = "Bez pořadu"
+    return df
+
+
+def render_overview(
+    df: pd.DataFrame,
+    df_all: pd.DataFrame,
+    monthly_yt: Optional[pd.DataFrame],
+    monthly_rc: Optional[pd.DataFrame],
+):
     st.markdown("### Přehled výkonu online obsahu")
     total_downloads = df["Downloads"].sum()
     total_views = df["Zhlédnutí"].sum()
@@ -441,7 +486,9 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional
         )
         st.altair_chart(alt_cz(roi_chart), use_container_width=True)
 
-        roi_series = build_cumulative_roi_series(df, df_all, monthly_yt, naklady, ey, em)
+        roi_series = build_cumulative_roi_series(
+            df, df_all, monthly_yt, monthly_rc, naklady, ey, em
+        )
         if len(roi_series) > 0:
             roi_series_plot = roi_series.copy()
             roi_series_plot["ROI_pct"] = roi_series_plot["ROI"] * 100.0
@@ -482,9 +529,27 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional
                 .properties(height=320)
             )
             st.markdown("#### Kumulativní ROI v čase")
-            st.caption(
-                "Kumulativní ROI aktuálního výběru. Osa zobrazuje měsíc i rok. YouTube podle měsíčních dat; stažení Red Circle se přiřadí k měsíci publikace epizody, protože nemáme jejich měsíční rozpad. Náklady se alokují stejným podílem epizod jako výše; před prvním měsícem s náklady se ROI ještě nekreslí."
+            episodes_in_scope = set(df["EpisodeName"])
+            has_rc_monthly = (
+                monthly_rc is not None
+                and len(monthly_rc) > 0
+                and monthly_rc["Epizoda"].isin(episodes_in_scope).any()
             )
+            if has_rc_monthly:
+                st.caption(
+                    "Kumulativní ROI aktuálního výběru. Osa zobrazuje měsíc i rok. "
+                    "YouTube i Red Circle berou skutečná měsíční data. "
+                    "Náklady se alokují stejným podílem epizod jako výše; "
+                    "před prvním měsícem s náklady se ROI ještě nekreslí."
+                )
+            else:
+                st.caption(
+                    "Kumulativní ROI aktuálního výběru. Osa zobrazuje měsíc i rok. "
+                    "YouTube podle měsíčních dat; u Red Circle chybí měsíční export, "
+                    "proto se stažení dočasně přiřadí k měsíci publikace epizody. "
+                    "Náklady se alokují stejným podílem epizod jako výše; "
+                    "před prvním měsícem s náklady se ROI ještě nekreslí."
+                )
             st.altair_chart(alt_cz(roi_line_chart), use_container_width=True)
     elif cost is not None and cost > 0 and n_episodes_all <= 0:
         st.caption("V datech nejsou žádné epizody – ROI nelze spočítat.")
@@ -590,54 +655,97 @@ def chart_downloads_vs_views(df: pd.DataFrame):
     st.altair_chart(alt_cz(chart), use_container_width=True)
 
 
-def chart_time_trend(df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
-    st.markdown(f"### Trend {L_ZHLÉDNUTÍ.lower()} v čase (YouTube)")
-    st.caption(
-        f"Časový trend zobrazujeme jen podle {L_ZHLÉDNUTÍ} na YouTube (měsíční součty). "
-        "U Red Circle máme u epizod jen souhrnné stažení a datum publikace (bez měsíčního rozpadu)."
-    )
-
-    if monthly_yt is not None and len(monthly_yt) > 0:
-        episodes_in_scope = set(df["EpisodeName"])
-        m = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)]
-        if len(m) > 0:
-            grouped_yt = m.groupby("Měsíc", as_index=False)["YouTube_Zhlédnutí"].sum()
-            nonzero = grouped_yt[grouped_yt["YouTube_Zhlédnutí"] > 0].copy()
-
-            st.checkbox(
-                "Zobrazit i měsíce s 0 zhlédnutí",
-                value=False,
-                key="show_zero_trend",
-            )
-            show_zeros = bool(st.session_state.get("show_zero_trend", False))
-
-            to_plot = grouped_yt if show_zeros else nonzero
-            if len(to_plot) > 0:
-                chart_yt = (
-                    alt.Chart(to_plot)
-                    .mark_line(point=True)
-                    .encode(
-                        x=alt.X("Měsíc:T", title="Měsíc"),
-                        y=alt.Y("YouTube_Zhlédnutí:Q", title=L_ZHLÉDNUTÍ),
-                        tooltip=[
-                            alt.Tooltip("Měsíc:T", title="Měsíc"),
-                            alt.Tooltip("YouTube_Zhlédnutí:Q", title=L_ZHLÉDNUTÍ, format=","),
-                        ],
-                    )
-                    .properties(height=350)
-                )
-                st.altair_chart(alt_cz(chart_yt), use_container_width=True)
-            else:
-                st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádná nenulová YouTube zhlédnutí.")
-
-            st.caption(
-                f"Zobrazeno {len(to_plot)} měsíců "
-                f"(nenulové: {len(nonzero)} / celkem: {len(grouped_yt)})."
-            )
-        else:
-            st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádná YouTube zhlédnutí.")
+def chart_time_trend(
+    df: pd.DataFrame,
+    monthly_yt: Optional[pd.DataFrame],
+    monthly_rc: Optional[pd.DataFrame],
+):
+    st.markdown("### Trend využití v čase")
+    has_yt = monthly_yt is not None and len(monthly_yt) > 0
+    has_rc = monthly_rc is not None and len(monthly_rc) > 0
+    if has_yt and has_rc:
+        st.caption(
+            f"Měsíční součty {L_ZHLÉDNUTÍ.lower()} (YouTube) a {L_STAŽENÍ.lower()} (Red Circle) "
+            "pro epizody ve zvoleném filtru."
+        )
+    elif has_yt:
+        st.caption(
+            f"Měsíční součty {L_ZHLÉDNUTÍ.lower()} na YouTube. "
+            "U Red Circle chybí měsíční export – trend stažení se nezobrazí."
+        )
+    elif has_rc:
+        st.caption(
+            f"Měsíční součty {L_STAŽENÍ.lower()} na Red Circle. "
+            "Pro YouTube trend spusťte `combine_usage_data.py` s exportem Data v grafu.csv."
+        )
     else:
-        st.info("Pro zobrazení trendu spusťte nejdříve skript `combine_usage_data.py` s exportem měsíčních YouTube dat (soubor Data v grafu.csv ve formátu po měsících).")
+        st.info(
+            "Pro trend v čase chybí měsíční data. "
+            "YouTube: spusťte `combine_usage_data.py` s Data v grafu.csv. "
+            "Red Circle: přidejte `data/MKP Studio - Red Circle měsíčně.csv`."
+        )
+        return
+
+    episodes_in_scope = set(df["EpisodeName"])
+    frames: list[pd.DataFrame] = []
+
+    if has_yt:
+        m_yt = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)]
+        if len(m_yt) > 0:
+            g_yt = m_yt.groupby("Měsíc", as_index=False)["YouTube_Zhlédnutí"].sum()
+            g_yt = g_yt.rename(columns={"YouTube_Zhlédnutí": "Hodnota"})
+            g_yt["Zdroj"] = L_ZHLÉDNUTÍ_YT_POPIS
+            frames.append(g_yt)
+
+    if has_rc:
+        m_rc = monthly_rc[monthly_rc["Epizoda"].isin(episodes_in_scope)]
+        if len(m_rc) > 0:
+            g_rc = m_rc.groupby("Měsíc", as_index=False)["RedCircle_Downloads"].sum()
+            g_rc = g_rc.rename(columns={"RedCircle_Downloads": "Hodnota"})
+            g_rc["Zdroj"] = L_STAŽENÍ_RC_POPIS
+            frames.append(g_rc)
+
+    if not frames:
+        st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádné hodnoty.")
+        return
+
+    combined = pd.concat(frames, ignore_index=True)
+    nonzero = combined[combined["Hodnota"] > 0].copy()
+
+    st.checkbox(
+        "Zobrazit i měsíce s 0 využitím",
+        value=False,
+        key="show_zero_trend",
+    )
+    show_zeros = bool(st.session_state.get("show_zero_trend", False))
+    to_plot = combined if show_zeros else nonzero
+
+    if len(to_plot) > 0:
+        chart = (
+            alt.Chart(to_plot)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("Měsíc:T", title="Měsíc", axis=alt.Axis(format="%m/%Y")),
+                y=alt.Y("Hodnota:Q", title="Využití"),
+                color=alt.Color("Zdroj:N", title=None),
+                tooltip=[
+                    alt.Tooltip("yearmonth(Měsíc):T", title="Měsíc"),
+                    alt.Tooltip("Zdroj:N", title="Zdroj"),
+                    alt.Tooltip("Hodnota:Q", title="Využití", format=","),
+                ],
+            )
+            .properties(height=350)
+        )
+        st.altair_chart(alt_cz(chart), use_container_width=True)
+        n_months = to_plot["Měsíc"].nunique()
+        n_nonzero = nonzero["Měsíc"].nunique()
+        n_all = combined["Měsíc"].nunique()
+        st.caption(
+            f"Zobrazeno {n_months} měsíců "
+            f"(nenulové: {n_nonzero} / celkem: {n_all})."
+        )
+    else:
+        st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádné nenulové hodnoty.")
 
 
 def chart_source_mix(df: pd.DataFrame):
@@ -847,8 +955,12 @@ def main():
 
     monthly_mtime = MONTHLY_CSV_PATH.stat().st_mtime if MONTHLY_CSV_PATH.exists() else 0.0
     monthly_yt = load_monthly_yt(str(MONTHLY_CSV_PATH), monthly_mtime)
-    render_overview(filtered, df, monthly_yt)
-    chart_time_trend(filtered, monthly_yt)
+    monthly_rc_mtime = (
+        MONTHLY_RC_CSV_PATH.stat().st_mtime if MONTHLY_RC_CSV_PATH.exists() else 0.0
+    )
+    monthly_rc = load_monthly_rc(str(MONTHLY_RC_CSV_PATH), monthly_rc_mtime)
+    render_overview(filtered, df, monthly_yt, monthly_rc)
+    chart_time_trend(filtered, monthly_yt, monthly_rc)
 
     chart_source_mix(filtered)
 

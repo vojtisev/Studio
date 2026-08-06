@@ -70,7 +70,8 @@ Skript **nesestavuje vlastní časové období**; bere vždy to, co je uvnitř s
 - Volitelně doporučeno: **"Data v grafu.csv"** (měsíční rozpad)
 
 **Red Circle:**
-- **"EpisodePerformanceReport_*.csv"**
+- **"EpisodePerformanceReport_*.csv"** (lifetime stažení do `statistika.csv`)
+- Volitelně: **`MKP Studio - Red Circle měsíčně.csv`** – kalendářní měsíční stažení po epizodách (pro ROI v čase a trend). Formát: `PodcastName,Epizoda,EpisodeUUID,Měsíc,RedCircle_Downloads,PodcastUUID` (`Měsíc` = `YYYY-MM`). Oficiální CSV export z RC toto neumí; soubor se připravuje zvlášť z UI/API.
 
 ### Uložení a příkaz
 Exporty ulož do **`~/Cursor Workspace/MKP/Studio/data/`**, pak:

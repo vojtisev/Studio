@@ -255,7 +255,8 @@ def main():
     output_file = DATA_DIR / 'MKP Studio - statistika.csv'
     result_df.to_csv(output_file, index=False, encoding='utf-8-sig')
     
-    # Export měsíčních YouTube dat (RedCircle měsíční rozpad nemáme)
+    # Export měsíčních YouTube dat
+    # (Red Circle měsíční CSV se připravuje zvlášť: data/MKP Studio - Red Circle měsíčně.csv)
     if yt_graph_df is not None and len(yt_graph_df) > 0:
         monthly_df = yt_graph_df[['Název videa', 'Datum', 'Zhlédnutí']].copy()
         monthly_df = monthly_df.rename(columns={

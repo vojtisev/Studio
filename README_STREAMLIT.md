@@ -78,14 +78,10 @@ Po měsících se počítá:
 
 ##### Jak vzniká kumulativní využití
 
-- **YouTube**: používají se skutečná měsíční data ze souboru `**data/MKP Studio - YouTube měsíčně.csv`**.
-- **Red Circle**: protože nemáme měsíční rozpad stažení, přiřadí se **celá dosavadní stažení epizody** k **měsíci její publikace**. V grafu se tedy podcastová stažení projeví jako jednorázový skok v měsíci vydání epizody a od té chvíle zůstávají v kumulativním součtu.
+- **YouTube**: skutečná měsíční data ze souboru `**data/MKP Studio - YouTube měsíčně.csv`**.
+- **Red Circle**: skutečná měsíční data ze souboru `**data/MKP Studio - Red Circle měsíčně.csv`** (kalendářní měsíce z Episode Performance / API). Pokud tento soubor chybí, aplikace dočasně přiřadí lifetime stažení epizody k měsíci její publikace.
 
-Toto pravidlo je zjednodušení, ale umožňuje:
-
-- počítat ROI v čase nad **všemi dostupnými daty**, nejen nad YouTube,
-- zachovat **stejnou metodiku jako u statického ROI**,
-- a dosáhnout toho, že na **posledním měsíci statistik** bude kumulativní ROI odpovídat dnešnímu souhrnnému ROI pro stejný filtr.
+Na **posledním měsíci statistik** by kumulativní ROI mělo odpovídat souhrnnému ROI pro stejný filtr (stejné WTP, stejná alokace nákladů).
 
 ##### Jak se do toho promítá filtr pořadu
 
@@ -103,7 +99,7 @@ Graf proto neslouží jako účetní evidence po měsících, ale jako **manaže
 
 1. **Top epizody podle celkového využití** – Sloupcový graf nejúspěšnějších epizod (stažení + zhlédnutí). Posuvník mění počet epizod v žebříčku.
 2. **Vztah mezi staženími a zhlédnutími** – Scatter graf: osy = stažení vs. zhlédnutí, bubliny velikost podle celkového využití; barva = pořad.
-3. **Trend zhlédnutí v čase (YouTube)** – **Pouze YouTube**, měsíční součty zhlédnutí. Defaultně se kreslí jen měsíce s nenulovým využitím; volitelně lze přepnout i na zobrazení nulových měsíců.
+3. **Trend využití v čase** – Měsíční součty **YouTube zhlédnutí** a **Red Circle stažení** (dvě křivky). Defaultně jen měsíce s nenulovým využitím; volitelně i nuly.
 4. **Rozdělení celkového využití podle zdroje** – Koláč s popisem zdroje: **Red Circle (stažení)** vs. **YouTube (zhlédnutí)**.
 5. **Pareto: kolik epizod pokryje využití** – kumulativní podíl celkového využití podle pořadí epizod.
 6. **Měsíční top epizoda (YouTube)** – výběr měsíce a zobrazení epizod s nejvyššími zhlédnutími v daném měsíci.
@@ -144,6 +140,7 @@ Aplikace běží typicky na `http://localhost:8501`.
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `**data/MKP Studio - statistika.csv`**      | Hlavní přehled epizod (generuje `combine_usage_data.py`).                                                                                                |
 | `**data/MKP Studio - YouTube měsíčně.csv**` | Měsíční zhlédnutí + určení **posledního měsíce** pro náklady a trend.                                                                                    |
+| `**data/MKP Studio - Red Circle měsíčně.csv**` | Měsíční stažení po epizodách (kalendářní měsíce); používá ROI v čase a trend využití. Ruční / jednorázový export z Red Circle.                         |
 | `**data/naklady.csv`**                      | Sloupce `**rok**`, `**naklady_Kc**` – roční náklady (minulé uzavřené roky celé částky; u běžícího roku plán za 12 měsíců, v ROI se krátí poměrem M/12).  |
 | `**data/statistiky_meta.json**`             | Volitelná kopie **posledního měsíce** (`posledni_mesic_statistik`, formát `YYYY-MM`); zapisuje se při běhu `combine_usage_data.py` spolu s měsíčním CSV. |
 
