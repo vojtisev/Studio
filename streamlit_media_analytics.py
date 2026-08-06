@@ -146,6 +146,93 @@ def cost_breakdown_lines(naklady: Dict[int, float], end_y: int, end_m: int) -> s
     return " · ".join(parts) if parts else ""
 
 
+def build_cumulative_roi_series(
+    df: pd.DataFrame,
+    df_all: pd.DataFrame,
+    monthly_yt: Optional[pd.DataFrame],
+    naklady: Dict[int, float],
+    end_y: int,
+    end_m: int,
+) -> pd.DataFrame:
+    """Kumulativní ROI po měsících (stejný model jako statické ROI).
+
+    YouTube: skutečná měsíční zhlédnutí. Red Circle: lifetime Downloads epizody
+    se přiřadí k měsíci PublishDate (bez data → poslední měsíc statistik).
+    """
+    empty = pd.DataFrame(columns=["Měsíc", "Využití kumul", "Hodnota kumul", "Náklady alok", "ROI"])
+    n_all = len(df_all)
+    n_sel = len(df)
+    if n_all <= 0 or n_sel <= 0 or not naklady:
+        return empty
+
+    share_episodes = n_sel / n_all
+    end_ts = pd.Timestamp(year=end_y, month=end_m, day=1)
+
+    # Red Circle → měsíc publikace
+    rc = df[["EpisodeName", "Downloads", "PublishDate"]].copy()
+    rc["rc_month"] = rc["PublishDate"].dt.to_period("M").dt.to_timestamp()
+    missing_pub = rc["rc_month"].isna()
+    rc.loc[missing_pub, "rc_month"] = end_ts
+    rc_by_month = rc.groupby("rc_month", as_index=False)["Downloads"].sum()
+    rc_by_month = rc_by_month.rename(columns={"Downloads": "rc_month_usage"})
+
+    # YouTube měsíčně pro epizody ve výběru
+    yt_by_month = pd.DataFrame(columns=["Měsíc", "yt_month_usage"])
+    if monthly_yt is not None and len(monthly_yt) > 0:
+        episodes_in_scope = set(df["EpisodeName"])
+        m = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)].copy()
+        if len(m) > 0:
+            yt_by_month = (
+                m.groupby("Měsíc", as_index=False)["YouTube_Zhlédnutí"]
+                .sum()
+                .rename(columns={"YouTube_Zhlédnutí": "yt_month_usage"})
+            )
+
+    # Začátek řady: nejdřívější z (leden prvního roku nákladů, první publikace, první nenulový YT měsíc)
+    start_candidates: list[pd.Timestamp] = []
+    if naklady:
+        start_candidates.append(pd.Timestamp(year=min(naklady.keys()), month=1, day=1))
+    if len(rc_by_month) > 0:
+        start_candidates.append(pd.Timestamp(rc_by_month["rc_month"].min()))
+    if len(yt_by_month) > 0:
+        yt_nz = yt_by_month[yt_by_month["yt_month_usage"] > 0]
+        if len(yt_nz) > 0:
+            start_candidates.append(pd.Timestamp(yt_nz["Měsíc"].min()))
+        else:
+            start_candidates.append(pd.Timestamp(yt_by_month["Měsíc"].min()))
+    if not start_candidates:
+        return empty
+    start_ts = min(start_candidates)
+    if start_ts > end_ts:
+        return empty
+
+    months = pd.date_range(start=start_ts, end=end_ts, freq="MS")
+    series = pd.DataFrame({"Měsíc": months})
+    series = series.merge(yt_by_month, on="Měsíc", how="left")
+    series = series.merge(rc_by_month, left_on="Měsíc", right_on="rc_month", how="left")
+    series["yt_month_usage"] = series["yt_month_usage"].fillna(0).astype(float)
+    series["rc_month_usage"] = series["rc_month_usage"].fillna(0).astype(float)
+    series["usage_month"] = series["yt_month_usage"] + series["rc_month_usage"]
+    series["Využití kumul"] = series["usage_month"].cumsum()
+    series["Hodnota kumul"] = series["Využití kumul"] * WTP_CZK
+
+    costs = []
+    for ts in series["Měsíc"]:
+        costs.append(total_cost_prorated(naklady, int(ts.year), int(ts.month)) * share_episodes)
+    series["Náklady alok"] = costs
+    series["ROI"] = series.apply(
+        lambda r: (r["Hodnota kumul"] - r["Náklady alok"]) / r["Náklady alok"]
+        if r["Náklady alok"] > 0
+        else float("nan"),
+        axis=1,
+    )
+    # Zobrazit od prvního měsíce s kladnými alokovanými náklady (stejný model jako statické ROI)
+    series = series[series["Náklady alok"] > 0].copy()
+    if series.empty:
+        return empty
+    return series[["Měsíc", "Využití kumul", "Hodnota kumul", "Náklady alok", "ROI"]].reset_index(drop=True)
+
+
 @st.cache_data
 def load_data(csv_path: str, csv_mtime: float) -> pd.DataFrame:
     """Načte data z CSV a převede názvy sloupců na standardní formát.
@@ -250,7 +337,7 @@ def load_monthly_yt(monthly_csv_path: str, monthly_csv_mtime: float) -> Optional
     return df
 
 
-def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
+def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
     st.markdown("### Přehled výkonu online obsahu")
     total_downloads = df["Downloads"].sum()
     total_views = df["Zhlédnutí"].sum()
@@ -357,6 +444,46 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame):
             .properties(height=260)
         )
         st.altair_chart(alt_cz(roi_chart), use_container_width=True)
+
+        roi_series = build_cumulative_roi_series(df, df_all, monthly_yt, naklady, ey, em)
+        if len(roi_series) > 0:
+            roi_series_plot = roi_series.copy()
+            roi_series_plot["ROI_pct"] = roi_series_plot["ROI"] * 100.0
+            reference = pd.DataFrame(
+                {
+                    "Měsíc": roi_series_plot["Měsíc"],
+                    "ROI_pct": [100.0] * len(roi_series_plot),
+                    "Řada": ["Cíl 100 %"] * len(roi_series_plot),
+                }
+            )
+            actual = roi_series_plot[["Měsíc", "ROI_pct"]].copy()
+            actual["Řada"] = "Kumulativní ROI"
+            roi_line_data = pd.concat([actual, reference], ignore_index=True)
+            roi_line_chart = (
+                alt.Chart(roi_line_data)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("Měsíc:T", title="Měsíc"),
+                    y=alt.Y("ROI_pct:Q", title="ROI (%)"),
+                    color=alt.Color("Řada:N", title=None),
+                    strokeDash=alt.StrokeDash(
+                        "Řada:N",
+                        title=None,
+                        sort=["Kumulativní ROI", "Cíl 100 %"],
+                    ),
+                    tooltip=[
+                        alt.Tooltip("Měsíc:T", title="Měsíc"),
+                        alt.Tooltip("Řada:N", title="Řada"),
+                        alt.Tooltip("ROI_pct:Q", title="ROI (%)", format=".1f"),
+                    ],
+                )
+                .properties(height=320)
+            )
+            st.markdown("#### Kumulativní ROI v čase")
+            st.caption(
+                "Kumulativní ROI aktuálního výběru. YouTube podle měsíčních dat; stažení Red Circle se přiřadí k měsíci publikace epizody, protože nemáme jejich měsíční rozpad. Náklady se alokují stejným podílem epizod jako výše."
+            )
+            st.altair_chart(alt_cz(roi_line_chart), use_container_width=True)
     elif cost is not None and cost > 0 and n_episodes_all <= 0:
         st.caption("V datech nejsou žádné epizody – ROI nelze spočítat.")
     elif cost is not None and cost > 0 and total_usage <= 0:
@@ -716,10 +843,9 @@ def main():
         st.warning("Pro zvolené filtry nejsou žádná data.")
         return
 
-    render_overview(filtered, df)
-
     monthly_mtime = MONTHLY_CSV_PATH.stat().st_mtime if MONTHLY_CSV_PATH.exists() else 0.0
     monthly_yt = load_monthly_yt(str(MONTHLY_CSV_PATH), monthly_mtime)
+    render_overview(filtered, df, monthly_yt)
     chart_time_trend(filtered, monthly_yt)
 
     chart_source_mix(filtered)
