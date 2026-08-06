@@ -46,6 +46,40 @@ _CZ_NUMBER_LOCALE = {
     "currency": ["", " Kč"],
 }
 
+_CZ_MONTHS = (
+    "leden",
+    "únor",
+    "březen",
+    "duben",
+    "květen",
+    "červen",
+    "červenec",
+    "srpen",
+    "září",
+    "říjen",
+    "listopad",
+    "prosinec",
+)
+
+
+def format_mesic_cz(ts) -> str:
+    """Český popisek měsíce pro tooltips (např. „srpen 2026“)."""
+    try:
+        t = pd.Timestamp(ts)
+        if pd.isna(t):
+            return ""
+        return f"{_CZ_MONTHS[int(t.month) - 1]} {int(t.year)}"
+    except (ValueError, TypeError, OverflowError, IndexError):
+        return str(ts)
+
+
+def with_mesic_popis(df: pd.DataFrame, col: str = "Měsíc") -> pd.DataFrame:
+    """Přidá sloupec Měsíc_popis s českým názvem měsíce pro tooltips."""
+    out = df.copy()
+    if col in out.columns:
+        out["Měsíc_popis"] = out[col].map(format_mesic_cz)
+    return out
+
 
 def fmt_tisice(n: object) -> str:
     """Čísla bez desetinných míst, tisíce oddělené mezerou (ne čárkou jako v en_US)."""
@@ -507,7 +541,9 @@ def render_overview(
             )
             actual = roi_series_plot[["Měsíc", "ROI_pct"]].copy()
             actual["Řada"] = "Kumulativní ROI"
-            roi_line_data = pd.concat([actual, reference], ignore_index=True)
+            roi_line_data = with_mesic_popis(
+                pd.concat([actual, reference], ignore_index=True)
+            )
             roi_line_chart = (
                 alt.Chart(roi_line_data)
                 .mark_line(point=True)
@@ -521,7 +557,7 @@ def render_overview(
                         sort=["Kumulativní ROI", "Cíl 0 % (návratnost nákladů)"],
                     ),
                     tooltip=[
-                        alt.Tooltip("yearmonth(Měsíc):T", title="Měsíc / rok"),
+                        alt.Tooltip("Měsíc_popis:N", title="Měsíc"),
                         alt.Tooltip("Řada:N", title="Řada"),
                         alt.Tooltip("ROI_pct:Q", title="ROI (%)", format=".1f"),
                     ],
@@ -718,7 +754,7 @@ def chart_time_trend(
         key="show_zero_trend",
     )
     show_zeros = bool(st.session_state.get("show_zero_trend", False))
-    to_plot = combined if show_zeros else nonzero
+    to_plot = with_mesic_popis(combined if show_zeros else nonzero)
 
     if len(to_plot) > 0:
         chart = (
@@ -729,7 +765,7 @@ def chart_time_trend(
                 y=alt.Y("Hodnota:Q", title="Využití"),
                 color=alt.Color("Zdroj:N", title=None),
                 tooltip=[
-                    alt.Tooltip("yearmonth(Měsíc):T", title="Měsíc"),
+                    alt.Tooltip("Měsíc_popis:N", title="Měsíc"),
                     alt.Tooltip("Zdroj:N", title="Zdroj"),
                     alt.Tooltip("Hodnota:Q", title="Využití", format=","),
                 ],
@@ -877,7 +913,11 @@ def render_monthly_top_episodes(df: pd.DataFrame, monthly_yt: Optional[pd.DataFr
 
     monthly_totals["Měsíc_str"] = monthly_totals["Měsíc"].dt.strftime("%Y-%m")
     month_options = sorted(monthly_totals["Měsíc_str"].unique().tolist())
-    selected_month_str = st.selectbox("Vyber měsíc", month_options)
+    selected_month_str = st.selectbox(
+        "Vyber měsíc",
+        month_options,
+        format_func=lambda s: format_mesic_cz(f"{s}-01"),
+    )
 
     top_n = st.slider("Počet top epizod v měsíci", 3, 10, 5)
 
