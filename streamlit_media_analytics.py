@@ -226,10 +226,6 @@ def build_cumulative_roi_series(
         else float("nan"),
         axis=1,
     )
-    # Zobrazit od prvního měsíce s kladnými alokovanými náklady (stejný model jako statické ROI)
-    series = series[series["Náklady alok"] > 0].copy()
-    if series.empty:
-        return empty
     return series[["Měsíc", "Využití kumul", "Hodnota kumul", "Náklady alok", "ROI"]].reset_index(drop=True)
 
 
@@ -449,11 +445,17 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional
         if len(roi_series) > 0:
             roi_series_plot = roi_series.copy()
             roi_series_plot["ROI_pct"] = roi_series_plot["ROI"] * 100.0
+            first_cost_month = roi_series_plot.loc[
+                roi_series_plot["Náklady alok"] > 0, "Měsíc"
+            ].min()
+            reference_months = roi_series_plot.loc[
+                roi_series_plot["Měsíc"] >= first_cost_month, "Měsíc"
+            ].reset_index(drop=True)
             reference = pd.DataFrame(
                 {
-                    "Měsíc": roi_series_plot["Měsíc"],
-                    "ROI_pct": [100.0] * len(roi_series_plot),
-                    "Řada": ["Cíl 100 %"] * len(roi_series_plot),
+                    "Měsíc": reference_months,
+                    "ROI_pct": [100.0] * len(reference_months),
+                    "Řada": ["Cíl 100 %"] * len(reference_months),
                 }
             )
             actual = roi_series_plot[["Měsíc", "ROI_pct"]].copy()
@@ -463,7 +465,7 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional
                 alt.Chart(roi_line_data)
                 .mark_line(point=True)
                 .encode(
-                    x=alt.X("Měsíc:T", title="Měsíc"),
+                    x=alt.X("Měsíc:T", title="Měsíc / rok", axis=alt.Axis(format="%m/%Y")),
                     y=alt.Y("ROI_pct:Q", title="ROI (%)"),
                     color=alt.Color("Řada:N", title=None),
                     strokeDash=alt.StrokeDash(
@@ -472,7 +474,7 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional
                         sort=["Kumulativní ROI", "Cíl 100 %"],
                     ),
                     tooltip=[
-                        alt.Tooltip("Měsíc:T", title="Měsíc"),
+                        alt.Tooltip("yearmonth(Měsíc):T", title="Měsíc / rok"),
                         alt.Tooltip("Řada:N", title="Řada"),
                         alt.Tooltip("ROI_pct:Q", title="ROI (%)", format=".1f"),
                     ],
@@ -481,7 +483,7 @@ def render_overview(df: pd.DataFrame, df_all: pd.DataFrame, monthly_yt: Optional
             )
             st.markdown("#### Kumulativní ROI v čase")
             st.caption(
-                "Kumulativní ROI aktuálního výběru. YouTube podle měsíčních dat; stažení Red Circle se přiřadí k měsíci publikace epizody, protože nemáme jejich měsíční rozpad. Náklady se alokují stejným podílem epizod jako výše."
+                "Kumulativní ROI aktuálního výběru. Osa zobrazuje měsíc i rok. YouTube podle měsíčních dat; stažení Red Circle se přiřadí k měsíci publikace epizody, protože nemáme jejich měsíční rozpad. Náklady se alokují stejným podílem epizod jako výše; před prvním měsícem s náklady se ROI ještě nekreslí."
             )
             st.altair_chart(alt_cz(roi_line_chart), use_container_width=True)
     elif cost is not None and cost > 0 and n_episodes_all <= 0:
