@@ -801,42 +801,59 @@ def chart_source_mix(df: pd.DataFrame):
 
 
 def chart_pareto_top_episodes(df: pd.DataFrame):
-    st.markdown("### Pareto: co pokryje Top využití")
-    top_n = st.slider("Počet epizod v Pareto grafu", 5, 50, 25)
+    st.markdown("### Koncentrace využití")
+    top_n = st.slider("Počet top epizod pro odhad koncentrace", 5, 50, 25, key="pareto_top_n")
 
     sorted_df = df.sort_values("TotalUsage", ascending=False)
     total_usage = float(sorted_df["TotalUsage"].sum())
-    if len(sorted_df) == 0 or total_usage <= 0:
-        st.info("Pro zvolený filtr není možné postavit Pareto graf.")
+    n_all = len(sorted_df)
+    if n_all == 0 or total_usage <= 0:
+        st.info("Pro zvolený filtr nelze spočítat koncentraci využití.")
         return
 
     top = sorted_df.head(top_n).copy().reset_index(drop=True)
     top["Pořadí"] = top.index + 1
     top["Podíl kumulativně"] = top["TotalUsage"].cumsum() / total_usage
+    share = float(top["Podíl kumulativně"].iloc[-1])
+    n_top = len(top)
+    share_eps = n_top / n_all
 
+    if share >= 0.8:
+        verdict = "portfolio je silně závislé na menším počtu titulů"
+    elif share >= 0.5:
+        verdict = "využití je spíš koncentrované v horní části žebříčku"
+    else:
+        verdict = "využití je relativně rovnoměrně rozložené"
+
+    st.markdown(
+        f"Top **{n_top}** epizod ({share_eps:.0%} katalogu) pokrývá **{share:.0%}** "
+        f"{L_CELKEM_VYUŽITÍ_GEN} — {verdict}."
+    )
     st.caption(
-        f"Top {len(top)} epizod pokryje {top['Podíl kumulativně'].iloc[-1]:.1%} z {L_CELKEM_VYUŽITÍ_GEN}."
+        "Konkrétní tituly hledejte v žebříčku Top epizody a v analytických vhledech. "
+        "Vodorovná čára = 80 % využití."
     )
 
-    chart = (
-        alt.Chart(top)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("Pořadí:Q", title="Pořadí epizody"),
-            y=alt.Y(
-                "Podíl kumulativně:Q",
-                title="Kumulativní podíl",
-                scale=alt.Scale(domain=[0, 1]),
-            ),
-            tooltip=[
-                alt.Tooltip("EpisodeName:N", title=L_EPIZODA),
-                alt.Tooltip("TotalUsage:Q", title=L_CELKEM_VYUŽITÍ, format=","),
-                alt.Tooltip("Podíl kumulativně:Q", title="Kumulativně", format=".0%"),
-            ],
-        )
-        .properties(height=320)
+    curve = alt.Chart(top).mark_line(point=True).encode(
+        x=alt.X("Pořadí:Q", title="Pořadí"),
+        y=alt.Y(
+            "Podíl kumulativně:Q",
+            title=None,
+            axis=alt.Axis(format="%"),
+            scale=alt.Scale(domain=[0, 1]),
+        ),
+        tooltip=[
+            alt.Tooltip("EpisodeName:N", title=L_EPIZODA),
+            alt.Tooltip("TotalUsage:Q", title=L_CELKEM_VYUŽITÍ, format=","),
+            alt.Tooltip("Podíl kumulativně:Q", title="Kumulativně", format=".0%"),
+        ],
     )
-
+    ref80 = (
+        alt.Chart(pd.DataFrame({"y": [0.8]}))
+        .mark_rule(strokeDash=[4, 4], color="#888")
+        .encode(y="y:Q")
+    )
+    chart = (curve + ref80).properties(height=150)
     st.altair_chart(alt_cz(chart), use_container_width=True)
 
 
@@ -904,6 +921,54 @@ def render_insights(df: pd.DataFrame):
         .reset_index()
     )
     top_podcast = 10
+    chart_df = by_podcast_total.head(top_podcast)
+    if len(chart_df) > 0 and chart_df["TotalUsage"].sum() > 0:
+        podcast_order = chart_df["PodcastName"].tolist()
+        long = chart_df.melt(
+            id_vars=["PodcastName"],
+            value_vars=["Downloads", "Zhlédnutí"],
+            var_name="_metric",
+            value_name="Hodnota",
+        )
+        long["Zdroj"] = long["_metric"].map(
+            {
+                "Downloads": L_STAŽENÍ_RC_POPIS,
+                "Zhlédnutí": L_ZHLÉDNUTÍ_YT_POPIS,
+            }
+        )
+        height = max(220, 28 * len(podcast_order) + 80)
+        podcast_chart = (
+            alt.Chart(long)
+            .mark_bar()
+            .encode(
+                y=alt.Y(
+                    "PodcastName:N",
+                    sort=podcast_order,
+                    title=L_POŘAD,
+                ),
+                x=alt.X("Hodnota:Q", title=L_CELKEM_VYUŽITÍ, stack="zero"),
+                color=alt.Color(
+                    "Zdroj:N",
+                    title=None,
+                    scale=alt.Scale(
+                        domain=[L_STAŽENÍ_RC_POPIS, L_ZHLÉDNUTÍ_YT_POPIS],
+                        range=["#1f77b4", "#ff7f0e"],
+                    ),
+                    sort=[L_STAŽENÍ_RC_POPIS, L_ZHLÉDNUTÍ_YT_POPIS],
+                ),
+                tooltip=[
+                    alt.Tooltip("PodcastName:N", title=L_POŘAD),
+                    alt.Tooltip("Zdroj:N", title="Zdroj"),
+                    alt.Tooltip("Hodnota:Q", title="Využití", format=","),
+                ],
+            )
+            .properties(height=height)
+        )
+        st.altair_chart(alt_cz(podcast_chart), use_container_width=True)
+        st.caption(
+            f"TOP {min(top_podcast, len(chart_df))} pořadů podle {L_CELKEM_VYUŽITÍ_GEN.lower()}; "
+            f"sloupce = {L_STAŽENÍ.lower()} (Red Circle) + {L_ZHLÉDNUTÍ.lower()} (YouTube)."
+        )
     st.dataframe(
         dataframe_display_labels(by_podcast_total.head(top_podcast)),
         use_container_width=True,

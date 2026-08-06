@@ -101,7 +101,7 @@ Graf proto neslouží jako účetní evidence po měsících, ale jako **manaže
 2. **Vztah mezi staženími a zhlédnutími** – Scatter graf: osy = stažení vs. zhlédnutí, bubliny velikost podle celkového využití; barva = pořad.
 3. **Trend využití v čase** – Měsíční součty **YouTube zhlédnutí** a **Red Circle stažení** (dvě křivky). Defaultně jen měsíce s nenulovým využitím; volitelně i nuly.
 4. **Rozdělení celkového využití podle zdroje** – Koláč s popisem zdroje: **Red Circle (stažení)** vs. **YouTube (zhlédnutí)**.
-5. **Pareto: kolik epizod pokryje využití** – kumulativní podíl celkového využití podle pořadí epizod.
+5. **Koncentrace využití** – jedna věta (kolik % využití pokryje top N epizod) + malý kumulativní graf s referencí 80 %. Konkrétní tituly řeší Top epizody a vhledy.
 6. **Měsíční top epizoda (YouTube)** – výběr měsíce a zobrazení epizod s nejvyššími zhlédnutími v daném měsíci.
 7. **Analytické vhledy a vyhledávání** – Tabulky TOP epizod a TOP pořadů. V sidebaru lze vyhledat konkrétní pořad nebo epizodu/díl podle textu.
 
