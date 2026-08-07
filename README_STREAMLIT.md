@@ -55,7 +55,7 @@ kde **celkové náklady** organizace = výše popsaný součet z `naklady.csv` s
 
 | ROI           | Význam                                                                      |
 | ------------- | --------------------------------------------------------------------------- |
-| **0 %**       | Přínos z využití je **rovny** použitým nákladům (v tomto modelu „na nule“). |
+| **0 %**       | Přínos z využití je **roven** použitým nákladům (v tomto modelu „na nule“). |
 | **Kladné %**  | Přínos **přesahuje** náklady.                                               |
 | **Záporné %** | Náklady **nejsou** hodnotou využití pokryté.                                |
 
@@ -102,7 +102,7 @@ Graf proto neslouží jako účetní evidence po měsících, ale jako **manaže
 3. **Trend využití v čase** – Měsíční součty **YouTube zhlédnutí** a **Red Circle stažení** (dvě křivky). Defaultně jen měsíce s nenulovým využitím; volitelně i nuly.
 4. **Rozdělení celkového využití podle zdroje** – Koláč s popisem zdroje: **Red Circle (stažení)** vs. **YouTube (zhlédnutí)**.
 5. **Koncentrace využití** – jedna věta (kolik % využití pokryje top N epizod) + malý kumulativní graf s referencí 80 %. Konkrétní tituly řeší Top epizody a vhledy.
-6. **Měsíční top epizoda (YouTube)** – výběr měsíce a zobrazení epizod s nejvyššími zhlédnutími v daném měsíci.
+6. **Měsíční top epizoda** – výběr měsíce a žebříček epizod podle **celkového využití** (YouTube zhlédnutí + Red Circle stažení) v daném měsíci.
 7. **Analytické vhledy a vyhledávání** – Tabulky TOP epizod a TOP pořadů. V sidebaru lze vyhledat konkrétní pořad nebo epizodu/díl podle textu.
 
 Grafy jsou interaktivní (tooltip po najetí myší). U tabulek lze v rozhraní Streamlit často data zkopírovat nebo stáhnout (záleží na verzi prohlížeče a Streamlitu).
@@ -139,9 +139,9 @@ Aplikace běží typicky na `http://localhost:8501`.
 | Soubor                                      | Účel                                                                                                                                                     |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `**data/MKP Studio - statistika.csv`**      | Hlavní přehled epizod (generuje `combine_usage_data.py`).                                                                                                |
-| `**data/MKP Studio - YouTube měsíčně.csv**` | Měsíční zhlédnutí + určení **posledního měsíce** pro náklady a trend.                                                                                    |
-| `**data/MKP Studio - Red Circle měsíčně.csv**` | Měsíční stažení po epizodách (kalendářní měsíce); používá ROI v čase a trend využití. Ruční / jednorázový export z Red Circle.                         |
-| `**data/naklady.csv`**                      | Sloupce `**rok**`, `**naklady_Kc**` – roční náklady (minulé uzavřené roky celé částky; u běžícího roku plán za 12 měsíců, v ROI se krátí poměrem M/12).  |
+| `**data/MKP Studio - YouTube měsíčně.csv**` | Měsíční zhlédnutí + určení **posledního měsíce** pro náklady (spolu s `statistiky_meta.json`). Používá ROI v čase, trend a měsíční top. |
+| `**data/MKP Studio - Red Circle měsíčně.csv**` | Měsíční stažení po epizodách (kalendářní měsíce); používá ROI v čase, trend využití a měsíční top. Ruční / jednorázový export z Red Circle. |
+| `**data/naklady.csv`**                      | Sloupce `**rok**`, `**naklady_Kc**` – roční náklady (minulé uzavřené roky celé částky; u běžícího roku plán za 12 měsíců, v ROI se krátí poměrem **`(M−1)/12`**). |
 | `**data/statistiky_meta.json**`             | Volitelná kopie **posledního měsíce** (`posledni_mesic_statistik`, formát `YYYY-MM`); zapisuje se při běhu `combine_usage_data.py` spolu s měsíčním CSV. |
 
 
@@ -175,7 +175,7 @@ Výstupy se zapíší do `**data/**` (včetně měsíčního CSV a `statistiky_m
 | `command not found: streamlit` | Použijte `python3 -m streamlit run streamlit_media_analytics.py`                                                            |
 | `No module named 'streamlit'`  | `pip3 install streamlit` nebo `pip3 install -r requirements.txt`                                                            |
 | CSV nebyl nalezen              | Zkontrolujte existenci složky `**data/**` a souboru `**MKP Studio - statistika.csv**` přesně s tímto názvem (včetně mezer). |
-| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční export (spusťte `combine_usage_data.py` s **Data v grafu.csv**).                   |
+| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční data (`YouTube měsíčně.csv` / `statistiky_meta.json`; pro ROI v čase a trend ideálně i `Red Circle měsíčně.csv`). |
 | Prázdná nebo stará data        | Znovu spusťte `combine_usage_data.py` a obnovte stránku.                                                                    |
 
 

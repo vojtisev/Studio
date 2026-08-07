@@ -893,20 +893,75 @@ def chart_pareto_top_episodes(df: pd.DataFrame):
     st.altair_chart(alt_cz(chart), use_container_width=True)
 
 
-def render_monthly_top_episodes(df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]):
-    st.markdown(f"### Měsíční top epizoda ({L_ZHLÉDNUTÍ})")
-    if monthly_yt is None or len(monthly_yt) == 0:
-        st.info("Měsíční YouTube data nejsou dostupná.")
+def render_monthly_top_episodes(
+    df: pd.DataFrame,
+    monthly_yt: Optional[pd.DataFrame],
+    monthly_rc: Optional[pd.DataFrame],
+):
+    st.markdown(f"### Měsíční top epizoda ({L_CELKEM_VYUŽITÍ})")
+    has_yt = monthly_yt is not None and len(monthly_yt) > 0
+    has_rc = monthly_rc is not None and len(monthly_rc) > 0
+    if not has_yt and not has_rc:
+        st.info(
+            "Měsíční data nejsou dostupná (YouTube ani Red Circle). "
+            "Doplňte měsíční CSV a obnovte stránku."
+        )
         return
+
+    if has_yt and has_rc:
+        st.caption(
+            f"Žebříček podle součtu {L_ZHLÉDNUTÍ.lower()} (YouTube) a {L_STAŽENÍ.lower()} (Red Circle) "
+            "ve zvoleném měsíci."
+        )
+    elif has_yt:
+        st.caption(
+            f"Zatím jen {L_ZHLÉDNUTÍ.lower()} (YouTube) — chybí `MKP Studio - Red Circle měsíčně.csv`."
+        )
+    else:
+        st.caption(
+            f"Zatím jen {L_STAŽENÍ.lower()} (Red Circle) — chybí YouTube měsíční export."
+        )
 
     episodes_in_scope = set(df["EpisodeName"])
-    m = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)].copy()
-    if len(m) == 0:
-        st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádná YouTube zhlédnutí.")
+    ep_to_podcast = (
+        df[["EpisodeName", "PodcastName"]]
+        .drop_duplicates("EpisodeName")
+        .set_index("EpisodeName")["PodcastName"]
+        .to_dict()
+    )
+
+    frames: list[pd.DataFrame] = []
+    if has_yt:
+        m_yt = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)].copy()
+        if len(m_yt) > 0:
+            g = m_yt.groupby(["Měsíc", "Epizoda"], as_index=False)["YouTube_Zhlédnutí"].sum()
+            g = g.rename(columns={"YouTube_Zhlédnutí": "Zhlédnutí"})
+            frames.append(g[["Měsíc", "Epizoda", "Zhlédnutí"]])
+    if has_rc:
+        m_rc = monthly_rc[monthly_rc["Epizoda"].isin(episodes_in_scope)].copy()
+        if len(m_rc) > 0:
+            g = m_rc.groupby(["Měsíc", "Epizoda"], as_index=False)["RedCircle_Downloads"].sum()
+            g = g.rename(columns={"RedCircle_Downloads": "Downloads"})
+            frames.append(g[["Měsíc", "Epizoda", "Downloads"]])
+
+    if not frames:
+        st.info("Pro zvolený filtr pořadu nejsou v měsíčních datech žádné hodnoty.")
         return
 
-    monthly_totals = m.groupby("Měsíc", as_index=False)["YouTube_Zhlédnutí"].sum()
-    monthly_totals = monthly_totals[monthly_totals["YouTube_Zhlédnutí"] > 0].copy()
+    merged = frames[0]
+    for extra in frames[1:]:
+        merged = merged.merge(extra, on=["Měsíc", "Epizoda"], how="outer")
+    if "Zhlédnutí" not in merged.columns:
+        merged["Zhlédnutí"] = 0
+    if "Downloads" not in merged.columns:
+        merged["Downloads"] = 0
+    merged["Zhlédnutí"] = merged["Zhlédnutí"].fillna(0).astype(int)
+    merged["Downloads"] = merged["Downloads"].fillna(0).astype(int)
+    merged["TotalUsage"] = merged["Zhlédnutí"] + merged["Downloads"]
+    merged["PodcastName"] = merged["Epizoda"].map(ep_to_podcast).fillna("Bez pořadu")
+
+    monthly_totals = merged.groupby("Měsíc", as_index=False)["TotalUsage"].sum()
+    monthly_totals = monthly_totals[monthly_totals["TotalUsage"] > 0].copy()
     if len(monthly_totals) == 0:
         st.info("Neexistují měsíce s nenulovým využitím zvoleného výběru.")
         return
@@ -925,16 +980,16 @@ def render_monthly_top_episodes(df: pd.DataFrame, monthly_yt: Optional[pd.DataFr
         monthly_totals["Měsíc_str"] == selected_month_str, "Měsíc"
     ].iloc[0]
 
-    m_sel = m[m["Měsíc"] == month_dt]
     top_month = (
-        m_sel.groupby(["Epizoda", "PodcastName"], as_index=False)["YouTube_Zhlédnutí"]
+        merged[merged["Měsíc"] == month_dt]
+        .groupby(["Epizoda", "PodcastName"], as_index=False)[["Downloads", "Zhlédnutí", "TotalUsage"]]
         .sum()
-        .sort_values("YouTube_Zhlédnutí", ascending=False)
+        .sort_values("TotalUsage", ascending=False)
         .head(top_n)
     )
 
-    out = top_month.rename(columns={"Epizoda": "EpisodeName", "YouTube_Zhlédnutí": "Zhlédnutí"})
-    out = out[["EpisodeName", "PodcastName", "Zhlédnutí"]]
+    out = top_month.rename(columns={"Epizoda": "EpisodeName"})
+    out = out[["EpisodeName", "PodcastName", "Downloads", "Zhlédnutí", "TotalUsage"]]
     st.dataframe(dataframe_display_labels(out), use_container_width=True)
 
 
@@ -1076,7 +1131,7 @@ def main():
         chart_downloads_vs_views(filtered)
 
     chart_pareto_top_episodes(filtered)
-    render_monthly_top_episodes(filtered, monthly_yt)
+    render_monthly_top_episodes(filtered, monthly_yt, monthly_rc)
 
     render_insights(filtered)
 
