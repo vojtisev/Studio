@@ -98,7 +98,8 @@ def alt_cz(chart: alt.Chart) -> alt.Chart:
 
 
 def dataframe_display_labels(df: pd.DataFrame) -> pd.DataFrame:
-    """Přejmenuje sloupce pro zobrazení v tabulkách (konzistentní české názvy)."""
+    """Přejmenuje sloupce pro zobrazení v tabulkách (konzistentní české názvy)
+    a formátuje čísla s oddělovačem tisíců mezerou (např. 1 000)."""
     mapping = {
         "EpisodeName": L_EPIZODA,
         "PodcastName": L_POŘAD,
@@ -109,6 +110,8 @@ def dataframe_display_labels(df: pd.DataFrame) -> pd.DataFrame:
     out = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
     out = out.reset_index(drop=True)
     out.index = pd.RangeIndex(1, len(out) + 1, name="Pořadí")
+    for col in out.select_dtypes(include="number").columns:
+        out[col] = out[col].map(fmt_tisice)
     return out
 
 
