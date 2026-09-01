@@ -42,7 +42,7 @@ Pod přehledem je **jeden odhad ROI** podle **ochoty platit (WTP)** za jednotku 
 - za každý **dřívější kalendářní rok** než rok „posledního měsíce statistik“ se započítá **celá** roční částka z tabulky;
 - za **ten rok**, ve kterém leží poslední měsíc ve statistikách, se započítá poměr **`(M − 1) / 12`**, kde **M** je číslo posledního měsíce v exportu (např. poslední měsíc **březen → M = 3** → náklady za **2** měsíce roku, tj. **2/12**; kompenzuje to situaci, kdy kalendář už pokročil o měsíc dál než kompletní statistiky).
 
-**Poslední měsíc statistik** se bere z měsíčního exportu: soubor `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`, který při exportu zapisuje `combine_usage_data.py`.
+**Poslední měsíc statistik** se bere z `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`. Měsíční soubor se připravuje **browser extrakcí z YouTube Studia** (ne z exportu „Data v grafu“, který obsahuje jen ~5 videí). Viz `**Jak na aktualizaci statistiky podcastů.md`**.
 
 **Vzorec ROI:**
 
@@ -139,10 +139,10 @@ Aplikace běží typicky na `http://localhost:8501`.
 | Soubor                                      | Účel                                                                                                                                                     |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `**data/MKP Studio - statistika.csv`**      | Hlavní přehled epizod (generuje `combine_usage_data.py`).                                                                                                |
-| `**data/MKP Studio - YouTube měsíčně.csv**` | Měsíční zhlédnutí + určení **posledního měsíce** pro náklady (spolu s `statistiky_meta.json`). Používá ROI v čase, trend a měsíční top. |
-| `**data/MKP Studio - Red Circle měsíčně.csv**` | Měsíční stažení po epizodách (kalendářní měsíce); používá ROI v čase, trend využití a měsíční top. Ruční / jednorázový export z Red Circle. |
+| `**data/MKP Studio - YouTube měsíčně.csv**` | Měsíční zhlédnutí + **poslední měsíc** pro náklady (`statistiky_meta.json`). Browser extrakce ze Studia; ROI v čase, trend, měsíční top. |
+| `**data/MKP Studio - Red Circle měsíčně.csv**` | Měsíční stažení (browser extrakce z RC Episode Performance, All time + Month); ROI v čase, trend, měsíční top. |
 | `**data/naklady.csv`**                      | Sloupce `**rok**`, `**naklady_Kc**` – roční náklady (minulé uzavřené roky celé částky; u běžícího roku plán za 12 měsíců, v ROI se krátí poměrem **`(M−1)/12`**). |
-| `**data/statistiky_meta.json**`             | Volitelná kopie **posledního měsíce** (`posledni_mesic_statistik`, formát `YYYY-MM`); zapisuje se při běhu `combine_usage_data.py` spolu s měsíčním CSV. |
+| `**data/statistiky_meta.json**`             | **Poslední měsíc** statistik (`posledni_mesic_statistik`, `YYYY-MM`) a zdroj (`zdroj`, typicky `youtube_studio_browser_extract_…`). |
 
 
 Struktura hlavního statistického CSV: sloupce `PodcastName`, `Epizoda`, `Datum_publikování`, `YouTube_Zhlédnutí`, `RedCircle_Downloads`, `Celkové_využití` (podrobnosti v `**Jak na aktualizaci statistiky podcastů.md`**).
@@ -159,13 +159,19 @@ rok,naklady_Kc
 
 ### 3.4 Aktualizace dat
 
-Spusťte z kořene projektu:
+Aktualizace má **dva díly** (detail v `**Jak na aktualizaci statistiky podcastů.md`**):
+
+**A – lifetime součty** (přehled, statické ROI):
 
 ```bash
 python3 combine_usage_data.py
 ```
 
-Výstupy se zapíší do `**data/**` (včetně měsíčního CSV a `statistiky_meta.json`, pokud je k dispozici export **Data v grafu.csv**). V prohlížeči obnovte stránku (F5). Podrobný postup exportů z YouTube a Red Circle je v `**Jak na aktualizaci statistiky podcastů.md`**.
+Vstupy: `EpisodePerformanceReport_*.csv`, `Data v tabulce.csv` ve složce `data/`. Výstup: `MKP Studio - statistika.csv`.
+
+**B – měsíční rozpad** (ROI v čase, trend, měsíční top): browser extrakce → `MKP Studio - YouTube měsíčně.csv`, `MKP Studio - Red Circle měsíčně.csv`, `statistiky_meta.json`. **Nepoužívejte** export „Data v grafu.csv“ — obsahuje jen ~5 videí.
+
+Po obou dílech obnovte stránku ve Streamlitu (F5).
 
 ### 3.5 Řešení problémů
 
@@ -175,8 +181,8 @@ Výstupy se zapíší do `**data/**` (včetně měsíčního CSV a `statistiky_m
 | `command not found: streamlit` | Použijte `python3 -m streamlit run streamlit_media_analytics.py`                                                            |
 | `No module named 'streamlit'`  | `pip3 install streamlit` nebo `pip3 install -r requirements.txt`                                                            |
 | CSV nebyl nalezen              | Zkontrolujte existenci složky `**data/**` a souboru `**MKP Studio - statistika.csv**` přesně s tímto názvem (včetně mezer). |
-| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční data (`YouTube měsíčně.csv` / `statistiky_meta.json`; pro ROI v čase a trend ideálně i `Red Circle měsíčně.csv`). |
-| Prázdná nebo stará data        | Znovu spusťte `combine_usage_data.py` a obnovte stránku.                                                                    |
+| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční soubory (`YouTube měsíčně.csv`, `statistiky_meta.json`; pro ROI v čase i `Red Circle měsíčně.csv`). Postup: `**Jak na aktualizaci statistiky podcastů.md`**. |
+| Prázdná nebo stará data        | Lifetime: `combine_usage_data.py`. Měsíční grafy: browser extrakce dle návodu, pak F5. |
 
 
 ### 3.6 Poznámky k chování aplikace

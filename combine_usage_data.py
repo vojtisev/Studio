@@ -14,6 +14,30 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
+META_JSON_PATH = DATA_DIR / "statistiky_meta.json"
+MONTHLY_YT_PATH = DATA_DIR / "MKP Studio - YouTube měsíčně.csv"
+
+
+def should_skip_yt_monthly_overwrite(monthly_df: pd.DataFrame) -> bool:
+    """Nepřepisovat browser extrakci neúplným exportem Data v grafu (~5 videí)."""
+    if not MONTHLY_YT_PATH.exists():
+        return False
+    try:
+        if META_JSON_PATH.exists():
+            meta = json.loads(META_JSON_PATH.read_text(encoding="utf-8"))
+            if "browser_extract" in str(meta.get("zdroj", "")):
+                return True
+    except (json.JSONDecodeError, OSError):
+        pass
+    try:
+        existing = pd.read_csv(MONTHLY_YT_PATH, encoding="utf-8-sig")
+        old_eps = existing["Epizoda"].nunique() if "Epizoda" in existing.columns else 0
+        new_eps = monthly_df["Epizoda"].nunique() if "Epizoda" in monthly_df.columns else 0
+        if old_eps >= 20 and new_eps < old_eps * 0.5:
+            return True
+    except (OSError, KeyError, ValueError):
+        pass
+    return False
 
 def extract_keywords(name):
     """Extrahuje klíčová slova z názvu"""
@@ -255,7 +279,7 @@ def main():
     output_file = DATA_DIR / 'MKP Studio - statistika.csv'
     result_df.to_csv(output_file, index=False, encoding='utf-8-sig')
     
-    # Export měsíčních YouTube dat
+    # Export měsíčních YouTube dat z grafu — pouze pokud neexistuje kvalitnější browser extrakce
     # (Red Circle měsíční CSV se připravuje zvlášť: data/MKP Studio - Red Circle měsíčně.csv)
     if yt_graph_df is not None and len(yt_graph_df) > 0:
         monthly_df = yt_graph_df[['Název videa', 'Datum', 'Zhlédnutí']].copy()
@@ -268,17 +292,25 @@ def main():
         # Přidáme PodcastName z výsledné tabulky (epizoda -> pořad)
         ep_to_podcast = result_df[['Epizoda', 'PodcastName']].drop_duplicates('Epizoda').set_index('Epizoda')['PodcastName']
         monthly_df['PodcastName'] = monthly_df['Epizoda'].map(ep_to_podcast).fillna('')
-        monthly_file = DATA_DIR / 'MKP Studio - YouTube měsíčně.csv'
-        monthly_df.to_csv(monthly_file, index=False, encoding='utf-8-sig')
-        print(f"✓ Měsíční YouTube data uložena do: {monthly_file.relative_to(BASE_DIR)} ({len(monthly_df)} řádků)")
-        last_m = monthly_df["Měsíc"].max()
-        meta_path = DATA_DIR / "statistiky_meta.json"
-        meta = {
-            "posledni_mesic_statistik": last_m,
-            "zdroj": "youtube_mesicne_po_exportu",
-        }
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"✓ Meta období statistik: {meta_path.relative_to(BASE_DIR)} (poslední měsíc: {last_m})")
+        monthly_file = MONTHLY_YT_PATH
+        if should_skip_yt_monthly_overwrite(monthly_df):
+            new_eps = monthly_df["Epizoda"].nunique()
+            print(
+                f"⚠️ Přeskakuji přepsání {monthly_file.relative_to(BASE_DIR)} "
+                f"(graf export: {new_eps} epizod). Měsíční YouTube data aktualizujte browser extrakcí "
+                f"(viz Jak na aktualizaci statistiky podcastů.md)."
+            )
+        else:
+            monthly_df.to_csv(monthly_file, index=False, encoding='utf-8-sig')
+            print(f"✓ Měsíční YouTube data uložena do: {monthly_file.relative_to(BASE_DIR)} ({len(monthly_df)} řádků)")
+            last_m = monthly_df["Měsíc"].max()
+            meta = {
+                "posledni_mesic_statistik": last_m,
+                "zdroj": "youtube_mesicne_po_exportu",
+            }
+            meta_path = META_JSON_PATH
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"✓ Meta období statistik: {meta_path.relative_to(BASE_DIR)} (poslední měsíc: {last_m})")
     
     print(f"\n✓ Výsledek uložen do: {output_file.relative_to(BASE_DIR)}")
     print(f"\nShrnutí:")

@@ -1,0 +1,23 @@
+---
+description: Keep MKP Studio data pipeline docs in sync with code and extraction workflows
+alwaysApply: true
+---
+
+# Dokumentace dat a aktualizace statistik
+
+Při jakékoli změně datového pipeline, browser extrakce, `combine_usage_data.py`, měsíčních CSV nebo Streamlit metrik **aktualizuj průběžně**:
+
+1. **`Jak na aktualizaci statistiky podcastů.md`** — zdroj pravdy pro postup aktualizace (lifetime vs. měsíční browser extrakce).
+2. **`README_STREAMLIT.md`** — metodika ROI, popis datových souborů, sekce 3.4 aktualizace.
+
+## Co v dokumentaci vždy držet aktuální
+
+- **Lifetime** (`statistika.csv`): RC report + YouTube tabulka → `combine_usage_data.py`.
+- **Měsíční** (`YouTube měsíčně.csv`, `Red Circle měsíčně.csv`): browser extrakce, **ne** spoléhat na „Data v grafu.csv“ (limit ~5 videí).
+- Varování: `combine_usage_data.py` nesmí tiše přepsat browser měsíční CSV neúplným graf exportem.
+- Sloupce, kontrolní metriky (počet epizod, `statistiky_meta.json` → `zdroj`), kam soubory ukládat.
+
+## Po implementaci
+
+- UI nápovědy ve `streamlit_media_analytics.py` musí odkazovat na návod, ne na zastaralý „Data v grafu“ postup.
+- Necommituj jen kód bez docs, pokud změna ovlivňuje, **jak uživatel data obnovuje**.
