@@ -463,7 +463,7 @@ def render_overview(
     elif not period:
         st.caption(
             "Chybí **měsíční data** (`data/MKP Studio - YouTube měsíčně.csv`) nebo **`data/statistiky_meta.json`**. "
-            "Připravte je browser extrakcí z YouTube Studia (viz **`Jak na aktualizaci statistiky podcastů.md`**)."
+            "Připravte je browser extrakcí (viz **`scripts/Aktualizace.md`**, pak `python3 scripts/update_all.py`)."
         )
     elif cost is not None and cost > 0 and n_episodes_all > 0 and n_episodes > 0 and total_usage > 0:
         # Náklady nejdou přiřadit ke konkrétní epizodě — alokujeme poměrně podle počtu epizod (řádků) ve výběru
@@ -715,14 +715,13 @@ def chart_time_trend(
     elif has_rc:
         st.caption(
             f"Měsíční součty {L_STAŽENÍ.lower()} na Red Circle. "
-            "Pro YouTube trend chybí `MKP Studio - YouTube měsíčně.csv` — browser extrakce dle návodu."
+            "Pro YouTube trend chybí `MKP Studio - YouTube měsíčně.csv` — viz **`scripts/Aktualizace.md`**."
         )
     else:
         st.info(
             "Pro trend v čase chybí měsíční data. "
-            "YouTube: browser extrakce → `MKP Studio - YouTube měsíčně.csv`. "
-            "Red Circle: browser extrakce → `MKP Studio - Red Circle měsíčně.csv`. "
-            "Viz **`Jak na aktualizaci statistiky podcastů.md`**."
+            "YouTube + Red Circle: browser skripty ve `scripts/`, pak `python3 scripts/update_all.py`. "
+            "Viz **`scripts/Aktualizace.md`**."
         )
         return
 

@@ -159,19 +159,19 @@ rok,naklady_Kc
 
 ### 3.4 Aktualizace dat
 
-Aktualizace má **dva díly** (detail v `**Jak na aktualizaci statistiky podcastů.md`**):
+**Checklist:** `scripts/Aktualizace.md` (≈15–20 min). Detail: `Jak na aktualizaci statistiky podcastů.md`.
 
-**A – lifetime součty** (přehled, statické ROI):
+1. Exporty lifetime do `data/` (YT **Data v tabulce**, RC **EpisodePerformanceReport**)
+2. Browser skripty v DevTools: `scripts/rc_monthly_browser_extract.js`, `scripts/yt_monthly_browser_extract.js` (DESC + ASC)
+3. Jeden příkaz:
 
 ```bash
-python3 combine_usage_data.py
+python3 scripts/update_all.py
 ```
 
-Vstupy: `EpisodePerformanceReport_*.csv`, `Data v tabulce.csv` ve složce `data/`. Výstup: `MKP Studio - statistika.csv`.
+4. F5 ve Streamlitu
 
-**B – měsíční rozpad** (ROI v čase, trend, měsíční top): browser extrakce → `MKP Studio - YouTube měsíčně.csv`, `MKP Studio - Red Circle měsíčně.csv`, `statistiky_meta.json`. **Nepoužívejte** export „Data v grafu.csv“ — obsahuje jen ~5 videí.
-
-Po obou dílech obnovte stránku ve Streamlitu (F5).
+**Nepoužívejte** export „Data v grafu.csv“ pro měsíční data — obsahuje jen ~5 videí.
 
 ### 3.5 Řešení problémů
 

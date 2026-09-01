@@ -1,5 +1,19 @@
 # Návod pro aktualizaci statistik podcastů
 
+## Rychlá aktualizace (doporučeno)
+
+Měsíční checklist na jedné stránce: **`scripts/Aktualizace.md`**
+
+1. Exporty lifetime do `data/` (YT tabulka + RC report)
+2. Red Circle: `scripts/rc_monthly_browser_extract.js` v konzoli → CSV do `data/`
+3. YouTube: `scripts/yt_monthly_browser_extract.js` 2× (DESC, pak ASC) → JSON do `data/`
+4. `python3 scripts/update_all.py`
+5. F5 ve Streamlitu
+
+Detailní vysvětlení a varování níže.
+
+---
+
 ## Co skript dělá
 
 `combine_usage_data.py` kombinuje **lifetime** data z YouTube Studio a Red Circle do souboru `MKP Studio - statistika.csv` (celkové zhlédnutí + stažení po epizodách).
@@ -82,8 +96,10 @@ Zkopíruj soubory z kroků 1–2 do `data/`.
 
 ```bash
 cd ~/Cursor\ Workspace/MKP/Studio
-python3 combine_usage_data.py
+python3 scripts/update_all.py
 ```
+
+(pouze lifetime: `python3 combine_usage_data.py`)
 
 Přepíše **`MKP Studio - statistika.csv`**.  
 **Nepřepisuje** `MKP Studio - Red Circle měsíčně.csv` ani (při existující browser extrakci) `MKP Studio - YouTube měsíčně.csv`.
@@ -105,33 +121,20 @@ Oficiální CSV **nemá** kalendářní měsíce po epizodách. Postup (ověřen
 
 **Sloupce:** `PodcastName`, `Epizoda`, `EpisodeUUID`, `Měsíc`, `RedCircle_Downloads`, `PodcastUUID` (`Měsíc` = `YYYY-MM`).
 
-Prakticky: přihlášení v prohlížeči v Cursoru, agent extrahuje data z načtené stránky (stejný princip jako při první implementaci).
+Prakticky: DevTools Console → vložit **`scripts/rc_monthly_browser_extract.js`** → stáhnout CSV do `data/`.
 
 **6. YouTube – měsíční rozpad**
 
 Export **Data v grafu** nestačí (viz výše). Postup (ověřený v srpnu 2026):
 
 1. YouTube Studio → **Analytics → rozšířený režim**, stejný filtr pořadů jako u tabulky, rozpad **po měsících**.
-2. V UI grafu lze porovnat max. **~5 videí najednou** — proto se data tahají z interního stavu grafu (`timelineChartSpec` u `yta-explore-timeline`):
-   - dávky po 5 videích (checkboxy v tabulce),
-   - projít **seřazení ASC** (top ~50) a **DESC** (top ~50) → typicky **~100 videí** se skutečnými měsíčními řadami,
-   - u videí mimo top 50 v jednom pohledu: **fallback** — celá lifetime zhlédnutí přiřadit k **měsíci publikace** (aby součty seděly s tabulkou).
-3. Složit do **`data/MKP Studio - YouTube měsíčně.csv`**.
+2. DevTools Console → **`scripts/yt_monthly_browser_extract.js`** (2×: nejdřív DESC, pak ASC stránka).
+   - Skript tahá data z `timelineChartSpec` (dávky po 5 videích, ~50+50 v UI),
+   - stáhne `yt_monthly_desc_raw.json` + `yt_monthly_asc_raw.json` do `data/`.
+3. **`python3 scripts/update_all.py`** sestaví **`MKP Studio - YouTube měsíčně.csv`** a **`statistiky_meta.json`**.
+   - u videí mimo top 50+50: **fallback** — lifetime zhlédnutí → **měsíc publikace** (z `Data v tabulce`).
 
-**Sloupce:** `Epizoda`, `Měsíc`, `YouTube_Zhlédnutí`, `PodcastName` (`Měsíc` = `YYYY-MM`).
-
-4. Aktualizuj **`data/statistiky_meta.json`**:
-
-```json
-{
-  "posledni_mesic_statistik": "YYYY-MM",
-  "zdroj": "youtube_studio_browser_extract_YYYY-MM-DD"
-}
-```
-
-(`posledni_mesic_statistik` = nejvyšší `Měsíc` v CSV.)
-
-Prakticky: opět browser v Cursoru + přihlášení do Google; agent provede extrakci a sestavení CSV.
+**Sloupce výstupního CSV:** `Epizoda`, `Měsíc`, `YouTube_Zhlédnutí`, `PodcastName` (`Měsíc` = `YYYY-MM`).
 
 **Kontrola kvality YouTube měsíčního souboru**
 
@@ -145,7 +148,7 @@ Prakticky: opět browser v Cursoru + přihlášení do Google; agent provede ext
 
 **7. Kontrola výstupů**
 
-Ve `data/` ověř:
+Spusťte **`python3 scripts/update_all.py`** — vypíše souhrn. Ručně ve `data/` ověř:
 
 - `MKP Studio - statistika.csv` — nové epizody / vyšší součty
 - `MKP Studio - YouTube měsíčně.csv` — ~160+ epizod, poslední měsíc aktuální
