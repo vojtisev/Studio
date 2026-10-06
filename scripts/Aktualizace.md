@@ -38,15 +38,17 @@ Checklist pro měsíční obnovu dashboardu. Detailní vysvětlení: `Jak na akt
 
 1. URL musí obsahovat `o_direction=ANALYTICS_ORDER_DIRECTION_DESC`
 2. Console → vložte **`scripts/yt_monthly_browser_extract.js`** → Enter (≈2 min)
-3. V konzoli se objeví odkaz na ASC stránku
+3. Uložte `yt_monthly_desc_raw.json` (Safari nabídne jeden soubor — to je správně)
 
-**Krok B – ASC**
+**Krok B – ASC (stejná záložka)**
 
-1. Otevřete ASC odkaz z konzole (řazení **vzestupně**)
-2. Po načtení tabulky **znovu** spusťte stejný skript
-3. Stáhnou se `yt_monthly_desc_raw.json` a `yt_monthly_asc_raw.json` → oba do **`data/`**
+1. **Vyčistěte konzoli:** `Cmd+K` (nebo ikona koše) — YouTube jinak konzoli zahlcuje a nejde vložit skript
+2. Přepněte řazení na **vzestupné** ve stejné záložce: klik na sloupec **Zhlédnutí**, nebo ASC URL do **adresního řádku** téže záložky (ne nové okno)
+3. Po načtení tabulky: znovu `Cmd+K` → klikněte do **řádku dole** v konzoli → vložte skript → Enter
+4. Uložte `yt_monthly_asc_raw.json` → oba JSON do **`data/`**
 
-> ~100 videí má skutečný měsíční rozpad; zbytek doplní skript z tabulky (fallback = celá zhlédnutí v měsíci publikace).
+> ~100 videí má skutečný měsíční rozpad; zbytek doplní skript z tabulky (fallback).
+> Safari: jeden soubor za běh (DESC, pak ASC) — záměr.
 
 ---
 
@@ -90,6 +92,8 @@ Skript:
 | Problém | Řešení |
 |---------|--------|
 | YT skript: „tabulka se nenačetla“ | Počkejte na plné načtení, zkontrolujte filtr MKP Studio + Měsíční |
-| YT skript: „chybí DESC v localStorage“ | Nejdřív spusťte na DESC, pak na ASC |
+| YT skript: „chybí DESC v localStorage“ | ASC jste otevřeli v novém okně — vraťte se na DESC ve stejné záložce a spusťte skript znovu |
+| Safari stáhne jen jeden soubor | Normální: jeden při DESC, druhý při ASC |
+| Konzole zahlcená, nejde vložit skript | `Cmd+K` (Clear), kliknout do řádku dole, teprve pak vložit |
 | Málo YT epizod (<20) | Nepřepisujte browser CSV exportem z grafu |
 | `update_all.py` přeskočí lifetime | Doplňte exporty z kroku 1 do `data/` |

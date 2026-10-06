@@ -1,13 +1,17 @@
 // YouTube Studio – měsíční extrakce (2× spuštění: DESC, pak ASC)
 //
-// Příprava (jednou za aktualizaci):
-//   Analytics → rozšířený režim → entita MKP Studio → Od začátku → Měsíční → Obsah = Video
-//   URL musí obsahovat o_direction=ANALYTICS_ORDER_DIRECTION_DESC (seřazeno sestupně podle Zhlédnutí)
+// Příprava:
+//   Analytics → rozšířený režim → MKP Studio → Od začátku → Měsíční → Video
+//   Řazení sestupně (URL obsahuje ANALYTICS_ORDER_DIRECTION_DESC)
 //
-// 1. spuštění na DESC stránce → uloží data do localStorage, vypíše ASC odkaz
-// 2. spuštění na ASC stránce  → stáhne yt_monthly_desc_raw.json + yt_monthly_asc_raw.json
+// 1. spuštění na DESC → stáhne yt_monthly_desc_raw.json
+// 2. Vyčistěte konzoli (Cmd+K), ve STEJNÉ záložce přepněte řazení na vzestupné
+//    (klik na sloupec Zhlédnutí), po načtení tabulky skript znovu → yt_monthly_asc_raw.json
 //
-// Stažené JSON přesuňte do data/ a spusťte: python3 scripts/update_all.py
+// Oba JSON přesuňte do data/ a spusťte: python3 scripts/update_all.py
+//
+// NIKDY neotevírejte ASC v novém okně — localStorage by se ztratilo.
+// Když je konzole zahlcená: Cmd+K (Clear), klikněte do řádku dole, vložte skript, Enter.
 
 (async () => {
   const LS_KEY = "__ytMonthlyDescBackup";
@@ -21,40 +25,48 @@
 
   const descUrl =
     `https://studio.youtube.com/channel/${CHANNEL_ID}/analytics/tab-overview/period-default/explore?` +
-    baseParams + "&o_direction=ANALYTICS_ORDER_DIRECTION_DESC";
+    baseParams +
+    "&o_direction=ANALYTICS_ORDER_DIRECTION_DESC";
   const ascUrl =
     `https://studio.youtube.com/channel/${CHANNEL_ID}/analytics/tab-overview/period-default/explore?` +
-    baseParams + "&o_direction=ANALYTICS_ORDER_DIRECTION_ASC";
+    baseParams +
+    "&o_direction=ANALYTICS_ORDER_DIRECTION_ASC";
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const downloadJson = (filename, data) => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  // Safari často blokuje druhé rychlé stažení — delší pauza + jeden soubor najednou
+  const downloadJson = async (filename, data) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
+    await sleep(2500);
   };
 
   const waitTable = async (maxSec = 40) => {
     for (let i = 0; i < maxSec * 2; i++) {
       const table = document.querySelector("yta-explore-table");
       const tl = document.querySelector("yta-explore-timeline");
-      const n = table?.data?.tables?.[0]?.dimensionColumn?.entityDimensionCells?.length || 0;
+      const n =
+        table?.data?.tables?.[0]?.dimensionColumn?.entityDimensionCells?.length || 0;
       if (n >= 50 && tl?.get) return { table, tl, n };
       await sleep(500);
     }
     throw new Error(
-      "Tabulka se nenačetla (potřebujeme ≥50 videí). Zkontrolujte filtr MKP Studio, období Od začátku a granularitu Měsíční."
+      "Tabulka se nenačetla (≥50 videí). Zkontrolujte filtr MKP Studio, Od začátku, Měsíční."
     );
   };
 
   const extractCurrentSort = async () => {
     const { table, tl, n } = await waitTable();
-    const videos = table.data.tables[0].dimensionColumn.entityDimensionCells.map((c) => ({
-      id: c.id,
-      title: c.title,
-    }));
+    const videos = table.data.tables[0].dimensionColumn.entityDimensionCells.map(
+      (c) => ({ id: c.id, title: c.title })
+    );
     const titleToId = Object.fromEntries(videos.map((v) => [v.title, v.id]));
     const rows = [...document.querySelectorAll("yta-explore-table-row")].slice(1);
     const getCb = (row) => row.querySelector("[role=checkbox]");
@@ -63,7 +75,8 @@
       const m = (s.name || "").match(/EXTERNAL_VIEWS_([^_]+)/);
       const vidFromName = m ? m[1] : "";
       const title =
-        (s.data || []).find((p) => p.hovercardInfo?.entityTitle)?.hovercardInfo?.entityTitle || "";
+        (s.data || []).find((p) => p.hovercardInfo?.entityTitle)?.hovercardInfo
+          ?.entityTitle || "";
       const id = titleToId[title] || vidFromName;
       return (s.data || [])
         .filter((p) => p.x != null && (p.y || 0) > 0)
@@ -118,46 +131,58 @@
 
   if (!isAsc && !isDesc) {
     console.error(
-      "Neznámé řazení. Otevřete nejdřív DESC URL (viz scripts/Aktualizace.md):\n" + descUrl
+      "Neznámé řazení. Otevřete DESC stránku (sestupně podle Zhlédnutí):\n" + descUrl
     );
     return;
   }
 
-  console.log("YouTube měsíční extrakce – běží… (≈2 min)");
+  console.log("YouTube měsíční extrakce – běží… (≈2 min). Nechejte záložku otevřenou.");
   const result = await extractCurrentSort();
   console.log(
-    `Extrahováno ${result.points.length} bodů, ${result.uniqueTitles} videí, součet zhlédnutí ${result.sumViews}`
+    `Extrahováno ${result.points.length} bodů, ${result.uniqueTitles} videí, součet ${result.sumViews}`
   );
 
   if (isDesc) {
     localStorage.setItem(LS_KEY, JSON.stringify(result.points));
+    await downloadJson("yt_monthly_desc_raw.json", result.points);
+    console.clear();
     console.log(
-      "\n=== KROK 1/2 HOTOV (DESC) ===\n" +
-        "1. Otevřete ASC stránku (seřazení vzestupně):\n" +
+      "%c=== KROK 1/2 HOTOV (DESC) ===",
+      "font-size:14px;font-weight:bold;color:#0a0"
+    );
+    console.log(
+      "1. Uložte yt_monthly_desc_raw.json (Downloads).\n" +
+        "2. Vyčistěte konzoli: Cmd+K (nebo ikona koše).\n" +
+        "3. Ve STEJNÉ záložce přepněte řazení na vzestupné:\n" +
+        "   klikněte na sloupec „Zhlédnutí“ (šipka nahoru), NEBO vložte do adresního řádku:\n" +
         ascUrl +
-        "\n2. Po načtení tabulky znovu vložte a spusťte tento skript.\n" +
-        "3. Stáhnou se oba JSON → přesuňte do složky data/"
+        "\n   (Enter ve STEJNÉ záložce — ne nové okno)\n" +
+        "4. Po načtení tabulky: Cmd+K → klik do řádku konzole → vložte skript → Enter.\n" +
+        "5. Stáhne se yt_monthly_asc_raw.json."
     );
     return;
   }
 
+  // ASC
   const descRaw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
   if (!descRaw.length) {
     console.error(
-      "Chybí DESC data v localStorage. Nejdřív spusťte skript na DESC stránce:\n" + descUrl
+      "Chybí DESC data v localStorage (pravděpodobně jste ASC otevřeli v novém okně).\n" +
+        "Vraťte se na DESC ve stejné záložce a spusťte skript znovu:\n" +
+        descUrl
     );
     return;
   }
 
-  downloadJson("yt_monthly_desc_raw.json", descRaw);
-  await sleep(800);
-  downloadJson("yt_monthly_asc_raw.json", result.points);
+  await downloadJson("yt_monthly_asc_raw.json", result.points);
   localStorage.removeItem(LS_KEY);
 
   console.log(
     "\n=== KROK 2/2 HOTOV ===\n" +
-      `DESC: ${descRaw.length} bodů, ASC: ${result.points.length} bodů\n` +
-      "Přesuňte oba soubory do data/ a spusťte:\n" +
-      "  python3 scripts/update_all.py"
+      `ASC: ${result.points.length} bodů (DESC už máte z kroku 1)\n` +
+      "Přesuňte oba soubory do data/:\n" +
+      "  yt_monthly_desc_raw.json\n" +
+      "  yt_monthly_asc_raw.json\n" +
+      "Pak: python3 scripts/update_all.py"
   );
 })();
