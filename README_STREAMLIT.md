@@ -113,11 +113,14 @@ Grafy jsou interaktivní (tooltip po najetí myší). U tabulek lze v rozhraní 
 
 ### 3.1 Požadavky
 
-Python balíčky jsou uvedeny v `**requirements.txt`** (mimo jiné `streamlit`, `pandas`, `altair`, `numpy`). Instalace např.:
+Python balíčky jsou uvedeny v `**requirements.txt`** (mimo jiné `streamlit`, `pandas`, `altair`, `numpy`). Jednorázově vytvořte lokální prostředí:
 
 ```bash
-pip3 install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
+
+(Nepoužívejte systémové `pip3 install` — Homebrew Python to blokuje jako „externally-managed-environment“.)
 
 ### 3.2 Spuštění lokálně
 
@@ -179,7 +182,7 @@ python3 scripts/update_all.py
 | Problém                        | Postup                                                                                                                      |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `command not found: streamlit` | Použijte `python3 -m streamlit run streamlit_media_analytics.py`                                                            |
-| `No module named 'streamlit'`  | `pip3 install streamlit` nebo `pip3 install -r requirements.txt`                                                            |
+| `No module named 'streamlit'` / `pandas` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
 | CSV nebyl nalezen              | Zkontrolujte existenci složky `**data/**` a souboru `**MKP Studio - statistika.csv**` přesně s tímto názvem (včetně mezer). |
 | ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční soubory (`YouTube měsíčně.csv`, `statistiky_meta.json`; pro ROI v čase i `Red Circle měsíčně.csv`). Postup: `**Jak na aktualizaci statistiky podcastů.md`**. |
 | Prázdná nebo stará data        | Lifetime: `combine_usage_data.py`. Měsíční grafy: browser extrakce dle návodu, pak F5. |

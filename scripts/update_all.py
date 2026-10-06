@@ -14,6 +14,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 DATA = BASE / "data"
 SCRIPTS = BASE / "scripts"
+VENV_PYTHON = BASE / ".venv" / "bin" / "python"
 
 RC_MONTHLY = DATA / "MKP Studio - Red Circle měsíčně.csv"
 YT_MONTHLY = DATA / "MKP Studio - YouTube měsíčně.csv"
@@ -23,6 +24,13 @@ DESC_RAW = DATA / "yt_monthly_desc_raw.json"
 ASC_RAW = DATA / "yt_monthly_asc_raw.json"
 
 
+def python_bin() -> str:
+    """Preferuje .venv (pandas/streamlit), jinak aktuální interpret."""
+    if VENV_PYTHON.exists():
+        return str(VENV_PYTHON)
+    return sys.executable
+
+
 def mtime_str(path: Path) -> str:
     if not path.exists():
         return "—"
@@ -30,7 +38,7 @@ def mtime_str(path: Path) -> str:
 
 
 def run_py(script: Path) -> None:
-    subprocess.run([sys.executable, str(script)], cwd=BASE, check=True)
+    subprocess.run([python_bin(), str(script)], cwd=BASE, check=True)
 
 
 def csv_stats(path: Path, episode_col: str, month_col: str, value_col: str) -> dict | None:
@@ -93,7 +101,11 @@ def main() -> int:
             run_py(BASE / "combine_usage_data.py")
         except subprocess.CalledProcessError as e:
             print(f"⚠ combine_usage_data.py selhal (exit {e.returncode}).")
-            print("  Zkontrolujte: pip3 install -r requirements.txt")
+            if not VENV_PYTHON.exists():
+                print("  Chybí .venv — jednorázově:")
+                print("    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt")
+            else:
+                print("  Zkuste: .venv/bin/pip install -r requirements.txt")
             exit_code = 1
         print()
     else:

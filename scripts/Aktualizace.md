@@ -59,6 +59,12 @@ cd ~/Cursor\ Workspace/MKP/Studio
 python3 scripts/update_all.py
 ```
 
+Skript používá lokální `.venv` (pandas). Pokud ještě neexistuje (jednorázově):
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
 Skript:
 
 - sestaví `MKP Studio - YouTube měsíčně.csv` + `statistiky_meta.json`
