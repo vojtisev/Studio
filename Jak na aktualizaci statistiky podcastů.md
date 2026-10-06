@@ -14,11 +14,11 @@ Detailní vysvětlení a varování níže.
 
 ---
 
-## Co skript dělá
+## Co skripty dělají
 
-`combine_usage_data.py` kombinuje **lifetime** data z YouTube Studio a Red Circle do souboru `MKP Studio - statistika.csv` (celkové zhlédnutí + stažení po epizodách).
-
-**Měsíční data** pro ROI v čase, trend a měsíční top **skript nevytváří spolehlivě** — připravují se **samostatně přes browser extrakci** (viz níže). Oficiální exporty na obou platformách pro měsíční rozpad nestačí.
+- **`scripts/update_all.py`** — hlavní příkaz po exportech: sestaví YouTube měsíční CSV z raw JSON, spustí lifetime combine, vypíše kontrolu. Preferuje `.venv`.
+- **`combine_usage_data.py`** — kombinuje **lifetime** data z YouTube Studio a Red Circle do `MKP Studio - statistika.csv`.
+- Browser skripty ve `scripts/` — měsíční data (YouTube + Red Circle); oficiální exporty pro měsíční rozpad nestačí.
 
 ---
 
@@ -26,8 +26,8 @@ Detailní vysvětlení a varování níže.
 
 | Typ | Co aktualizuje | Jak | Výstup |
 | --- | --- | --- | --- |
-| **A – lifetime součty** | Přehled, top epizody, statické ROI | CSV exporty + `combine_usage_data.py` | `MKP Studio - statistika.csv` |
-| **B – měsíční rozpad** | ROI v čase, trend, měsíční top | Browser extrakce (YouTube + Red Circle zvlášť) | `MKP Studio - YouTube měsíčně.csv`, `MKP Studio - Red Circle měsíčně.csv`, `statistiky_meta.json` |
+| **A – lifetime součty** | Přehled, top epizody, statické ROI | CSV exporty + `scripts/update_all.py` (nebo `combine_usage_data.py`) | `MKP Studio - statistika.csv` |
+| **B – měsíční rozpad** | ROI v čase, trend, měsíční top | Browser skripty + `scripts/update_all.py` | `MKP Studio - YouTube měsíčně.csv`, `MKP Studio - Red Circle měsíčně.csv`, `statistiky_meta.json` |
 
 Bez **B** zůstanou lifetime metriky aktuální, ale časové grafy budou podle starých měsíčních souborů.
 
@@ -39,7 +39,7 @@ Export **Data v grafu** z YouTube Studia obsahuje měsíční řady jen pro **vi
 
 `combine_usage_data.py` z grafu sice umí zapsat `MKP Studio - YouTube měsíčně.csv`, ale **při běžné aktualizaci to nepoužívejte** — přepsalo by to kvalitní browser soubor neúplnými daty. Skript takový přepis **přeskakuje**, pokud už existuje browser extrakce (viz níže).
 
-Pro měsíční YouTube data proto platí **browser extrakce** (krok 7).
+Pro měsíční YouTube data proto platí **browser extrakce** (`scripts/yt_monthly_browser_extract.js`, krok 6 níže).
 
 ---
 
@@ -58,12 +58,26 @@ Skript **nepřepisuje období** — bere obsah posledních stažených CSV ve sl
 
 **`~/Cursor Workspace/MKP/Studio/data/`**
 
-Skripty zůstávají v kořeni projektu (`Studio/`).
+Skripty: kořen projektu (`combine_usage_data.py`) a složka **`scripts/`** (checklist, browser extrakce, `update_all.py`).
 
 Starší exporty ve `data/` můžeš nechat — skript bere **nejnovější podle data úpravy** souboru (kromě výstupů, které sám přepisuje).
 
-> Stačí: `python3 combine_usage_data.py` z adresáře `Studio/`.
+> Doporučeno: `python3 scripts/update_all.py` (použije `.venv`).  
+> Pouze lifetime: `.venv/bin/python combine_usage_data.py` (po `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`).
 
+---
+
+## Python prostředí (`.venv`)
+
+Homebrew Python **nepovolí** systémové `pip3 install` („externally-managed-environment“). Jednorázově:
+
+```bash
+cd ~/Cursor\ Workspace/MKP/Studio
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+`scripts/update_all.py` a `./run_media_analytics.sh` `.venv` používají automaticky.
 ---
 
 ## Období – technický význam
@@ -72,9 +86,9 @@ Starší exporty ve `data/` můžeš nechat — skript bere **nejnovější podl
 | --- | --- | --- |
 | **YouTube – Data v tabulce** | Celková zhlédnutí na video (lifetime). | Filtr doplňuj o nové pořady. |
 | **YouTube – Data v grafu** | Měsíční rozpad — ale jen pro **vybraná videa v grafu** (~5). | **Nepoužívat** pro měsíční CSV dashboardu; jen případně pro kontrolu. |
-| **YouTube – browser extrakce** | Měsíční zhlédnutí po epizodách z `timelineChartSpec` ve Studiu. | Aktuální zdroj pro `MKP Studio - YouTube měsíčně.csv` (krok 7). |
+| **YouTube – browser extrakce** | Měsíční zhlédnutí po epizodách z `timelineChartSpec` ve Studiu. | Aktuální zdroj pro `MKP Studio - YouTube měsíčně.csv` (krok 6). |
 | **Red Circle – EpisodePerformanceReport** | Lifetime stažení po epizodách. | Všechny podcasty; nejnovější soubor podle data úpravy. |
-| **Red Circle – browser extrakce** | Kalendářní měsíční stažení po epizodách. | Aktuální zdroj pro `MKP Studio - Red Circle měsíčně.csv` (krok 6). Oficiální CSV to neumí. |
+| **Red Circle – browser extrakce** | Kalendářní měsíční stažení po epizodách. | Aktuální zdroj pro `MKP Studio - Red Circle měsíčně.csv` (krok 5). Oficiální CSV to neumí. |
 
 ---
 
@@ -99,7 +113,7 @@ cd ~/Cursor\ Workspace/MKP/Studio
 python3 scripts/update_all.py
 ```
 
-(pouze lifetime: `python3 combine_usage_data.py`)
+(pouze lifetime: `.venv/bin/python combine_usage_data.py`)
 
 Přepíše **`MKP Studio - statistika.csv`**.  
 **Nepřepisuje** `MKP Studio - Red Circle měsíčně.csv` ani (při existující browser extrakci) `MKP Studio - YouTube měsíčně.csv`.
@@ -112,27 +126,27 @@ Potřebné pro **ROI v čase**, **trend využití** a **měsíční top epizod**
 
 **5. Red Circle – měsíční rozpad**
 
-Oficiální CSV **nemá** kalendářní měsíce po epizodách. Postup (ověřený v srpnu 2026):
+Oficiální CSV **nemá** kalendářní měsíce po epizodách. Postup:
 
 1. V Red Circle: **Stats → Episode Performance** (ne „Since Published“ — to je relativní pohled, ne kalendářní měsíce).
 2. **Select Date Range → All time**, interval **Month**.
-3. Po načtení stránky vytáhni měsíční řady z **Redux stavu** aplikace (klíč typu `Episode-Performance-All Podcasts-…-Month`) nebo z interního API (`/api/stats/downloads` s `bucketTerms=download.episodeUUID`).
-4. Ulož jako **`data/MKP Studio - Red Circle měsíčně.csv`** (přepiš předchozí).
+3. DevTools Console → vložit **`scripts/rc_monthly_browser_extract.js`** → Enter.
+4. Stáhne se CSV → přesuňte do **`data/MKP Studio - Red Circle měsíčně.csv`** (přepište předchozí).
 
 **Sloupce:** `PodcastName`, `Epizoda`, `EpisodeUUID`, `Měsíc`, `RedCircle_Downloads`, `PodcastUUID` (`Měsíc` = `YYYY-MM`).
 
-Prakticky: DevTools Console → vložit **`scripts/rc_monthly_browser_extract.js`** → stáhnout CSV do `data/`.
-
 **6. YouTube – měsíční rozpad**
 
-Export **Data v grafu** nestačí (viz výše). Postup (ověřený v srpnu 2026):
+Export **Data v grafu** nestačí (viz výše). Postup (detail včetně Safari tipů: **`scripts/Aktualizace.md`**):
 
-1. YouTube Studio → **Analytics → rozšířený režim**, stejný filtr pořadů jako u tabulky, rozpad **po měsících**.
-2. DevTools Console → **`scripts/yt_monthly_browser_extract.js`** (2×: nejdřív DESC, pak ASC stránka).
-   - Skript tahá data z `timelineChartSpec` (dávky po 5 videích, ~50+50 v UI),
-   - stáhne `yt_monthly_desc_raw.json` + `yt_monthly_asc_raw.json` do `data/`.
+1. YouTube Studio → **Analytics → rozšířený režim**, filtr MKP Studio, **Od začátku**, granularita **Měsíční**, dimenze **Video**.
+2. DevTools Console → **`scripts/yt_monthly_browser_extract.js`**:
+   - 1. běh na řazení **DESC** (sestupně) → `yt_monthly_desc_raw.json`
+   - vyčistit konzoli (`Cmd+K`), ve **stejné záložce** přepnout na **ASC** (ne nové okno)
+   - 2. běh → `yt_monthly_asc_raw.json`
+   - oba JSON do `data/`
 3. **`python3 scripts/update_all.py`** sestaví **`MKP Studio - YouTube měsíčně.csv`** a **`statistiky_meta.json`**.
-   - u videí mimo top 50+50: **fallback** — lifetime zhlédnutí → **měsíc publikace** (z `Data v tabulce`).
+   - ~100 videí má skutečný měsíční rozpad (UI limit 50+50); zbytek = **fallback** (lifetime → měsíc publikace z `Data v tabulce`).
 
 **Sloupce výstupního CSV:** `Epizoda`, `Měsíc`, `YouTube_Zhlédnutí`, `PodcastName` (`Měsíc` = `YYYY-MM`).
 
@@ -165,18 +179,11 @@ Commit + push změn ve `data/` a dokumentaci.
 
 ## První spuštění (shrnutí)
 
-**Lifetime (skript):**
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
 
-- YouTube: `Data v tabulce.csv`
-- Red Circle: `EpisodePerformanceReport_*.csv`
-- → `python3 combine_usage_data.py`
-
-**Měsíční (browser, nutné pro časové grafy):**
-
-- `MKP Studio - YouTube měsíčně.csv` + `statistiky_meta.json`
-- `MKP Studio - Red Circle měsíčně.csv`
-
-Detailní postup: kroky 5–6 výše.
+Pak checklist **`scripts/Aktualizace.md`** (exporty + browser skripty + `python3 scripts/update_all.py`).
 
 ---
 
@@ -200,7 +207,8 @@ Skript ve `data/` hledá:
 
 ## Tipy
 
-- **Měsíční data = browser**, lifetime = CSV + skript. Nemíchat postupy.
-- Po `combine_usage_data.py` zkontroluj, že `YouTube měsíčně.csv` **nemá méně epizod** než před během.
+- **Měsíční data = browser**, lifetime = CSV + `update_all.py`. Nemíchat postupy.
+- Po aktualizaci zkontroluj, že `YouTube měsíčně.csv` **nemá méně epizod** než před během.
 - Bez aktuálního RC měsíčního souboru: ROI v čase a trend RC použijí fallback (měsíc publikace) nebo stará data.
-- Při změně postupu extrakce nebo datového modelu **aktualizuj tento návod a `README_STREAMLIT.md`** (viz pravidlo v `.cursor/rules/`).
+- Safari: konzole zahlcená → `Cmd+K`, ASC vždy ve **stejné záložce**.
+- Při změně postupu extrakce nebo datového modelu **aktualizuj `scripts/Aktualizace.md`, tento návod a `README_STREAMLIT.md`** (viz `.cursor/rules/docs-sync.mdc`).

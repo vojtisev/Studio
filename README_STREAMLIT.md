@@ -4,7 +4,7 @@
 
 ## 1. Základní informace
 
-**Co aplikace je:** Jednoduchý webový přehled (dashboard) nad sloučenými daty z **Red Circle** (stažení podcastů) a **YouTube** (zhlédnutí videí). Data se berou z CSV souborů vygenerovaných skriptem `combine_usage_data.py`.
+**Co aplikace je:** Jednoduchý webový přehled (dashboard) nad sloučenými daty z **Red Circle** (stažení podcastů) a **YouTube** (zhlédnutí videí). Lifetime data generuje `combine_usage_data.py` (typicky přes `scripts/update_all.py`); měsíční časové řady vznikají browser extrakcí.
 
 **K čemu slouží:** Rychlý přehled využití obsahu podle epizod a pořadů, srovnání platforem, základní grafy a orientační **odhad návratnosti (ROI)** vůči **nákladům po rocích** (tabulka), **ochotě platit (WTP)** za jedno využití (stažení nebo zhlédnutí) a nově i **kumulativnímu vývoji ROI v čase**.
 
@@ -42,7 +42,7 @@ Pod přehledem je **jeden odhad ROI** podle **ochoty platit (WTP)** za jednotku 
 - za každý **dřívější kalendářní rok** než rok „posledního měsíce statistik“ se započítá **celá** roční částka z tabulky;
 - za **ten rok**, ve kterém leží poslední měsíc ve statistikách, se započítá poměr **`(M − 1) / 12`**, kde **M** je číslo posledního měsíce v exportu (např. poslední měsíc **březen → M = 3** → náklady za **2** měsíce roku, tj. **2/12**; kompenzuje to situaci, kdy kalendář už pokročil o měsíc dál než kompletní statistiky).
 
-**Poslední měsíc statistik** se bere z `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`. Měsíční soubor se připravuje **browser extrakcí z YouTube Studia** (ne z exportu „Data v grafu“, který obsahuje jen ~5 videí). Viz `**Jak na aktualizaci statistiky podcastů.md`**.
+**Poslední měsíc statistik** se bere z `**data/MKP Studio - YouTube měsíčně.csv`** (nejvyšší `Měsíc` ve formátu `YYYY-MM`), případně ze `**data/statistiky_meta.json**`. Měsíční soubor se připravuje **browser extrakcí z YouTube Studia** (ne z exportu „Data v grafu“, který obsahuje jen ~5 videí). Postup: `**scripts/Aktualizace.md**` (detail v `**Jak na aktualizaci statistiky podcastů.md**`).
 
 **Vzorec ROI:**
 
@@ -127,14 +127,18 @@ python3 -m venv .venv
 Z kořene projektu (složka se `streamlit_media_analytics.py`):
 
 ```bash
-python3 -m streamlit run streamlit_media_analytics.py
+./run_media_analytics.sh
 ```
 
-Nebo skript `./run_media_analytics.sh` (musí být spustitelný: `chmod +x run_media_analytics.sh`).
+(preferuje `.venv/bin/python`). Případně:
+
+```bash
+.venv/bin/python -m streamlit run streamlit_media_analytics.py
+```
 
 Aplikace běží typicky na `http://localhost:8501`.
 
-**Poznámka:** Aplikaci je nutné spouštět přes Streamlit (`streamlit run`), ne přímo `python3 streamlit_media_analytics.py` bez runtime Streamlitu.
+**Poznámka:** Aplikaci je nutné spouštět přes Streamlit (`streamlit run`), ne přímo `python3 streamlit_media_analytics.py` bez runtime Streamlitu. Systémové `python3 -m streamlit` funguje jen pokud máte streamlit v `.venv` nebo jinde nainstalovaný.
 
 ### 3.3 Datové soubory
 
@@ -146,6 +150,7 @@ Aplikace běží typicky na `http://localhost:8501`.
 | `**data/MKP Studio - Red Circle měsíčně.csv**` | Měsíční stažení (browser extrakce z RC Episode Performance, All time + Month); ROI v čase, trend, měsíční top. |
 | `**data/naklady.csv`**                      | Sloupce `**rok**`, `**naklady_Kc**` – roční náklady (minulé uzavřené roky celé částky; u běžícího roku plán za 12 měsíců, v ROI se krátí poměrem **`(M−1)/12`**). |
 | `**data/statistiky_meta.json**`             | **Poslední měsíc** statistik (`posledni_mesic_statistik`, `YYYY-MM`) a zdroj (`zdroj`, typicky `youtube_studio_browser_extract_…`). |
+| `**data/yt_monthly_desc_raw.json`**, `**asc_raw.json**` | Mezikrok browser extrakce YouTube; vstup pro `scripts/build_yt_monthly_csv.py` / `update_all.py`. |
 
 
 Struktura hlavního statistického CSV: sloupce `PodcastName`, `Epizoda`, `Datum_publikování`, `YouTube_Zhlédnutí`, `RedCircle_Downloads`, `Celkové_využití` (podrobnosti v `**Jak na aktualizaci statistiky podcastů.md`**).
@@ -181,11 +186,11 @@ python3 scripts/update_all.py
 
 | Problém                        | Postup                                                                                                                      |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `command not found: streamlit` | Použijte `python3 -m streamlit run streamlit_media_analytics.py`                                                            |
-| `No module named 'streamlit'` / `pandas` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `command not found: streamlit` | `./run_media_analytics.sh` nebo `.venv/bin/python -m streamlit run streamlit_media_analytics.py` |
+| `No module named 'streamlit'` / `pandas` / `externally-managed-environment` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` (ne systémový `pip3`) |
 | CSV nebyl nalezen              | Zkontrolujte existenci složky `**data/**` a souboru `**MKP Studio - statistika.csv**` přesně s tímto názvem (včetně mezer). |
-| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční soubory (`YouTube měsíčně.csv`, `statistiky_meta.json`; pro ROI v čase i `Red Circle měsíčně.csv`). Postup: `**Jak na aktualizaci statistiky podcastů.md`**. |
-| Prázdná nebo stará data        | Lifetime: `combine_usage_data.py`. Měsíční grafy: browser extrakce dle návodu, pak F5. |
+| ROI se nezobrazí               | Doplňte `**data/naklady.csv**` a měsíční soubory. Postup: `**scripts/Aktualizace.md**`. |
+| Prázdná nebo stará data        | `python3 scripts/update_all.py` (po exportech + browser skriptech), pak F5. |
 
 
 ### 3.6 Poznámky k chování aplikace

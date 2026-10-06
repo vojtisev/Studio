@@ -29,7 +29,7 @@ Checklist pro měsíční obnovu dashboardu. Detailní vysvětlení: `Jak na akt
 
 **Příprava:** Studio → Analytics → rozšířený režim:
 
-- Entita **182 MKP Studio**
+- Entita **MKP Studio** (skupina všech pořadů)
 - Období **Od začátku** (do konce minulého měsíce)
 - Granularita **Měsíční**, dimenze **Video**
 - Seřazeno podle **Zhlédnutí sestupně** (DESC)
@@ -103,3 +103,4 @@ Skript:
 | Konzole zahlcená, nejde vložit skript | `Cmd+K` (Clear), kliknout do řádku dole, teprve pak vložit |
 | Málo YT epizod (<20) | Nepřepisujte browser CSV exportem z grafu |
 | `update_all.py` přeskočí lifetime | Doplňte exporty z kroku 1 do `data/` |
+| `No module named 'pandas'` / `externally-managed-environment` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` (ne systémový `pip3`) |

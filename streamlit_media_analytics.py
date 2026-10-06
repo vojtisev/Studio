@@ -1019,8 +1019,48 @@ def render_insights(df: pd.DataFrame):
         .reset_index()
     )
     top_podcast = 10
-    chart_df = by_podcast_total.head(top_podcast)
-    if len(chart_df) > 0 and chart_df["TotalUsage"].sum() > 0:
+    chart_df = by_podcast_total.head(top_podcast).copy()
+    grand_total = float(by_podcast_total["TotalUsage"].sum())
+
+    if len(chart_df) > 0 and grand_total > 0:
+        # Podíly (TOP N + Ostatní) — doughnut
+        share_df = chart_df[["PodcastName", "TotalUsage"]].copy()
+        top_sum = float(share_df["TotalUsage"].sum())
+        rest = grand_total - top_sum
+        if rest > 0.5:
+            share_df = pd.concat(
+                [
+                    share_df,
+                    pd.DataFrame([{"PodcastName": "Ostatní", "TotalUsage": rest}]),
+                ],
+                ignore_index=True,
+            )
+        share_df["Podíl"] = share_df["TotalUsage"] / grand_total
+        share_df["Podíl_pct"] = (share_df["Podíl"] * 100).round(1)
+        share_order = share_df["PodcastName"].tolist()
+
+        share_chart = (
+            alt.Chart(share_df)
+            .mark_arc(innerRadius=55)
+            .encode(
+                theta=alt.Theta("TotalUsage:Q", stack=True),
+                color=alt.Color(
+                    "PodcastName:N",
+                    sort=share_order,
+                    title=L_POŘAD,
+                    legend=alt.Legend(orient="right", title=L_POŘAD),
+                ),
+                order=alt.Order("TotalUsage:Q", sort="descending"),
+                tooltip=[
+                    alt.Tooltip("PodcastName:N", title=L_POŘAD),
+                    alt.Tooltip("TotalUsage:Q", title=L_CELKEM_VYUŽITÍ, format=","),
+                    alt.Tooltip("Podíl:Q", title="Podíl", format=".1%"),
+                ],
+            )
+            .properties(height=340, title=f"Podíl {L_CELKEM_VYUŽITÍ_GEN} podle {L_POŘADU.lower()}")
+        )
+
+        # Stacked bar RC + YT (absolutní hodnoty)
         podcast_order = chart_df["PodcastName"].tolist()
         long = chart_df.melt(
             id_vars=["PodcastName"],
@@ -1060,17 +1100,38 @@ def render_insights(df: pd.DataFrame):
                     alt.Tooltip("Hodnota:Q", title="Využití", format=","),
                 ],
             )
-            .properties(height=height)
+            .properties(height=height, title="Stažení + zhlédnutí podle pořadu")
         )
-        st.altair_chart(alt_cz(podcast_chart), use_container_width=True)
+
+        col_share, col_bars = st.columns([1, 1])
+        with col_share:
+            st.altair_chart(alt_cz(share_chart), use_container_width=True)
+        with col_bars:
+            st.altair_chart(alt_cz(podcast_chart), use_container_width=True)
+
+        # Krátký text: co je klíčové (top 1–3)
+        top3 = share_df[share_df["PodcastName"] != "Ostatní"].head(3)
+        top3_share = float(top3["Podíl"].sum())
+        names = ", ".join(top3["PodcastName"].tolist())
         st.caption(
             f"TOP {min(top_podcast, len(chart_df))} pořadů podle {L_CELKEM_VYUŽITÍ_GEN.lower()}; "
-            f"sloupce = {L_STAŽENÍ.lower()} (Red Circle) + {L_ZHLÉDNUTÍ.lower()} (YouTube)."
+            f"sloupce = {L_STAŽENÍ.lower()} (Red Circle) + {L_ZHLÉDNUTÍ.lower()} (YouTube). "
+            f"Nejsilnější tři ({names}) tvoří **{top3_share:.0%}** celkového využití ve výběru."
         )
-    st.dataframe(
-        dataframe_display_labels(by_podcast_total.head(top_podcast)),
-        use_container_width=True,
-    )
+
+        table_out = by_podcast_total.head(top_podcast).copy()
+        table_out["Podíl"] = (table_out["TotalUsage"] / grand_total).map(
+            lambda x: f"{x:.1%}".replace(".", ",")
+        )
+        st.dataframe(
+            dataframe_display_labels(table_out),
+            use_container_width=True,
+        )
+    else:
+        st.dataframe(
+            dataframe_display_labels(by_podcast_total.head(top_podcast)),
+            use_container_width=True,
+        )
 
     st.markdown("---")
     st.markdown(f"**Top pořady podle {L_STAŽENÍ_RC_POPIS}:**")
