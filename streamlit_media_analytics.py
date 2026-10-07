@@ -106,6 +106,8 @@ def dataframe_display_labels(df: pd.DataFrame) -> pd.DataFrame:
         "Downloads": L_STAŽENÍ,
         "Zhlédnutí": L_ZHLÉDNUTÍ,
         "TotalUsage": L_CELKEM_VYUŽITÍ,
+        "Epizod": "Epizod",
+        "AvgViewsPerEpisode": "Ø zhlédnutí / epizoda",
     }
     out = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
     out = out.reset_index(drop=True)
@@ -182,6 +184,136 @@ def cost_breakdown_lines(naklady: Dict[int, float], end_y: int, end_m: int) -> s
             p = naklady[y] * (pm / 12.0)
             parts.append(f"{y}: {fmt_tisice(naklady[y])} × ({end_m}−1)/12 = {fmt_tisice(p)} Kč")
     return " · ".join(parts) if parts else ""
+
+
+def podcast_lifetime_avg_views(df: pd.DataFrame) -> pd.DataFrame:
+    """Lifetime Ø YouTube zhlédnutí na epizodu pořadu (+ součty a počet epizod)."""
+    if df.empty:
+        return pd.DataFrame(
+            columns=[
+                "PodcastName",
+                "Downloads",
+                "Zhlédnutí",
+                "TotalUsage",
+                "Epizod",
+                "AvgViewsPerEpisode",
+            ]
+        )
+    out = (
+        df.groupby("PodcastName", dropna=False)
+        .agg(
+            Downloads=("Downloads", "sum"),
+            Zhlédnutí=("Zhlédnutí", "sum"),
+            TotalUsage=("TotalUsage", "sum"),
+            Epizod=("EpisodeName", "count"),
+        )
+        .reset_index()
+    )
+    out["AvgViewsPerEpisode"] = (
+        (out["Zhlédnutí"] / out["Epizod"].clip(lower=1)).round(0).astype(int)
+    )
+    return out.sort_values("TotalUsage", ascending=False).reset_index(drop=True)
+
+
+def _episode_publish_months(
+    df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame]
+) -> pd.DataFrame:
+    """Měsíc vydání epizody: PublishDate, jinak první nenulový měsíc v YT měsíčních datech."""
+    catalog = df[["EpisodeName", "PodcastName", "PublishDate"]].copy()
+    catalog["PublishMonth"] = catalog["PublishDate"].dt.to_period("M").dt.to_timestamp()
+
+    proxy = {}
+    if monthly_yt is not None and len(monthly_yt) > 0:
+        m = monthly_yt[monthly_yt["YouTube_Zhlédnutí"] > 0].copy()
+        if len(m) > 0:
+            first = m.groupby("Epizoda", as_index=False)["Měsíc"].min()
+            proxy = dict(zip(first["Epizoda"], first["Měsíc"]))
+
+    missing = catalog["PublishMonth"].isna()
+    if missing.any() and proxy:
+        catalog.loc[missing, "PublishMonth"] = catalog.loc[missing, "EpisodeName"].map(proxy)
+
+    return catalog.dropna(subset=["PublishMonth"])
+
+
+def build_avg_views_per_episode_series(
+    df: pd.DataFrame,
+    monthly_yt: Optional[pd.DataFrame],
+    podcasts: Optional[list] = None,
+) -> pd.DataFrame:
+    """Kumulativní průměr YT zhlédnutí na epizodu pořadu v čase (metodika B).
+
+    avg(M) = kumulativní YT zhlédnutí pořadu do M ÷ počet epizod s vydáním ≤ M.
+    """
+    empty = pd.DataFrame(
+        columns=[
+            "Měsíc",
+            "PodcastName",
+            "Zhlédnutí kumul",
+            "Epizod do M",
+            "Ø zhlédnutí / epizoda",
+        ]
+    )
+    if monthly_yt is None or len(monthly_yt) == 0 or df.empty:
+        return empty
+
+    episodes_in_scope = set(df["EpisodeName"])
+    catalog = _episode_publish_months(df, monthly_yt)
+    if catalog.empty:
+        return empty
+
+    yt = monthly_yt[monthly_yt["Epizoda"].isin(episodes_in_scope)].copy()
+    if yt.empty:
+        return empty
+
+    # Doplnit PodcastName z katalogu, pokud v měsíčních datech chybí / nesedí
+    ep_to_podcast = dict(zip(df["EpisodeName"], df["PodcastName"]))
+    yt["PodcastName"] = yt["Epizoda"].map(ep_to_podcast).fillna(yt["PodcastName"])
+
+    if podcasts is not None:
+        podcasts = [p for p in podcasts if p in set(df["PodcastName"])]
+        if not podcasts:
+            return empty
+        yt = yt[yt["PodcastName"].isin(podcasts)]
+        catalog = catalog[catalog["PodcastName"].isin(podcasts)]
+        if yt.empty or catalog.empty:
+            return empty
+
+    start_ts = min(yt["Měsíc"].min(), catalog["PublishMonth"].min())
+    end_ts = yt["Měsíc"].max()
+    if pd.isna(start_ts) or pd.isna(end_ts) or start_ts > end_ts:
+        return empty
+
+    months = pd.date_range(start=start_ts, end=end_ts, freq="MS")
+    yt_month = (
+        yt.groupby(["PodcastName", "Měsíc"], as_index=False)["YouTube_Zhlédnutí"]
+        .sum()
+        .rename(columns={"YouTube_Zhlédnutí": "views_month"})
+    )
+
+    rows = []
+    for podcast, cat_p in catalog.groupby("PodcastName"):
+        pub_months = cat_p["PublishMonth"].sort_values().tolist()
+        yt_p = yt_month[yt_month["PodcastName"] == podcast].set_index("Měsíc")["views_month"]
+        cum = 0.0
+        for m in months:
+            cum += float(yt_p.get(m, 0) or 0)
+            n_eps = sum(1 for pm in pub_months if pm <= m)
+            if n_eps <= 0:
+                continue
+            rows.append(
+                {
+                    "Měsíc": m,
+                    "PodcastName": podcast,
+                    "Zhlédnutí kumul": cum,
+                    "Epizod do M": n_eps,
+                    "Ø zhlédnutí / epizoda": cum / n_eps,
+                }
+            )
+
+    if not rows:
+        return empty
+    return pd.DataFrame(rows)
 
 
 def build_cumulative_roi_series(
@@ -996,7 +1128,7 @@ def render_monthly_top_episodes(
     st.dataframe(dataframe_display_labels(out), use_container_width=True)
 
 
-def render_insights(df: pd.DataFrame):
+def render_insights(df: pd.DataFrame, monthly_yt: Optional[pd.DataFrame] = None):
     st.markdown("### Analytické vhledy")
 
     top_n = st.slider("Počet epizod v tabulce vhledů", 5, 20, 10)
@@ -1012,12 +1144,7 @@ def render_insights(df: pd.DataFrame):
     st.markdown("---")
     st.markdown(f"**Celkové využití podle {L_POŘADU}:**")
 
-    by_podcast_total = (
-        df.groupby("PodcastName", dropna=False)[["Downloads", "Zhlédnutí", "TotalUsage"]]
-        .sum()
-        .sort_values("TotalUsage", ascending=False)
-        .reset_index()
-    )
+    by_podcast_total = podcast_lifetime_avg_views(df)
     top_podcast = 10
     chart_df = by_podcast_total.head(top_podcast).copy()
     grand_total = float(by_podcast_total["TotalUsage"].sum())
@@ -1116,13 +1243,26 @@ def render_insights(df: pd.DataFrame):
         st.caption(
             f"TOP {min(top_podcast, len(chart_df))} pořadů podle {L_CELKEM_VYUŽITÍ_GEN.lower()}; "
             f"sloupce = {L_STAŽENÍ.lower()} (Red Circle) + {L_ZHLÉDNUTÍ.lower()} (YouTube). "
-            f"Nejsilnější tři ({names}) tvoří **{top3_share:.0%}** celkového využití ve výběru."
+            f"Nejsilnější tři ({names}) tvoří **{top3_share:.0%}** celkového využití ve výběru. "
+            f"**Ø zhlédnutí / epizoda** = lifetime YouTube zhlédnutí ÷ počet epizod (intenzita na díl, "
+            f"ne objem celého pořadu)."
         )
 
         table_out = by_podcast_total.head(top_podcast).copy()
         table_out["Podíl"] = (table_out["TotalUsage"] / grand_total).map(
             lambda x: f"{x:.1%}".replace(".", ",")
         )
+        table_out = table_out[
+            [
+                "PodcastName",
+                "Downloads",
+                "Zhlédnutí",
+                "TotalUsage",
+                "Epizod",
+                "AvgViewsPerEpisode",
+                "Podíl",
+            ]
+        ]
         st.dataframe(
             dataframe_display_labels(table_out),
             use_container_width=True,
@@ -1132,6 +1272,69 @@ def render_insights(df: pd.DataFrame):
             dataframe_display_labels(by_podcast_total.head(top_podcast)),
             use_container_width=True,
         )
+
+    # Průměr zhlédnutí na epizodu v čase (metodika B)
+    st.markdown("---")
+    st.markdown(f"**Průměrná {L_ZHLÉDNUTÍ.lower()} na epizodu v čase (YouTube):**")
+    if monthly_yt is None or len(monthly_yt) == 0:
+        st.caption(
+            "Chybí `MKP Studio - YouTube měsíčně.csv` — viz **`scripts/Aktualizace.md`**."
+        )
+    else:
+        lifetime = podcast_lifetime_avg_views(df)
+        n_shows = lifetime["PodcastName"].nunique()
+        max_lines = 8
+        if n_shows > max_lines:
+            chart_podcasts = (
+                lifetime.sort_values("AvgViewsPerEpisode", ascending=False)
+                .head(max_lines)["PodcastName"]
+                .tolist()
+            )
+            st.caption(
+                f"Pro čitelnost zobrazujeme TOP {max_lines} pořadů podle lifetime Ø zhlédnutí / epizoda "
+                f"(ve filtru je {n_shows}). Zúžením filtru v sidebaru uvidíte konkrétní pořad celý."
+            )
+        else:
+            chart_podcasts = lifetime["PodcastName"].tolist()
+
+        avg_series = build_avg_views_per_episode_series(df, monthly_yt, podcasts=chart_podcasts)
+        if len(avg_series) == 0:
+            st.info(
+                "Pro vybrané pořady nelze spočítat časovou řadu "
+                "(chybí měsíční zhlédnutí nebo měsíc vydání epizod)."
+            )
+        else:
+            plot_df = with_mesic_popis(avg_series)
+            avg_chart = (
+                alt.Chart(plot_df)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("Měsíc:T", title="Měsíc"),
+                    y=alt.Y(
+                        "Ø zhlédnutí / epizoda:Q",
+                        title="Ø zhlédnutí / epizoda (kumulativně)",
+                    ),
+                    color=alt.Color("PodcastName:N", title=L_POŘAD),
+                    tooltip=[
+                        alt.Tooltip("PodcastName:N", title=L_POŘAD),
+                        alt.Tooltip("Měsíc_popis:N", title="Měsíc"),
+                        alt.Tooltip(
+                            "Ø zhlédnutí / epizoda:Q",
+                            title="Ø zhlédnutí / epizoda",
+                            format=",.1f",
+                        ),
+                        alt.Tooltip("Zhlédnutí kumul:Q", title="Zhlédnutí kumul", format=","),
+                        alt.Tooltip("Epizod do M:Q", title="Epizod do měsíce", format=","),
+                    ],
+                )
+                .properties(height=360)
+            )
+            st.altair_chart(alt_cz(avg_chart), use_container_width=True)
+            st.caption(
+                "Kumulativní průměr: YouTube zhlédnutí pořadu do měsíce M ÷ počet epizod **vydaných do M**. "
+                "Měsíc vydání = datum publikace ze statistik; když chybí, první měsíc s nenulovým "
+                "zhlédnutím v měsíčních datech. Po aktualizaci měsíčního CSV se křivka posune automaticky."
+            )
 
     st.markdown("---")
     st.markdown(f"**Top pořady podle {L_STAŽENÍ_RC_POPIS}:**")
@@ -1197,7 +1400,7 @@ def main():
     chart_pareto_top_episodes(filtered)
     render_monthly_top_episodes(filtered, monthly_yt, monthly_rc)
 
-    render_insights(filtered)
+    render_insights(filtered, monthly_yt)
 
 
 if __name__ == "__main__":
