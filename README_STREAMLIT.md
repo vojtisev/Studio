@@ -103,7 +103,7 @@ Graf proto neslouží jako účetní evidence po měsících, ale jako **manaže
 4. **Rozdělení celkového využití podle zdroje** – Koláč s popisem zdroje: **Red Circle (stažení)** vs. **YouTube (zhlédnutí)**.
 5. **Koncentrace využití** – jedna věta (kolik % využití pokryje top N epizod) + malý kumulativní graf s referencí 80 %. Konkrétní tituly řeší Top epizody a vhledy.
 6. **Měsíční top epizoda** – výběr měsíce a žebříček epizod podle **celkového využití** (YouTube zhlédnutí + Red Circle stažení) v daném měsíci.
-7. **Analytické vhledy a vyhledávání** – Tabulky TOP epizod a TOP pořadů (včetně **Ø zhlédnutí / epizoda** a podílu). V sidebaru lze vyhledat konkrétní pořad nebo epizodu/díl podle textu.
+7. **Analytické vhledy a vyhledávání** – Tabulky TOP epizod a TOP pořadů. U epizod je sloupec **Ø zhlédnutí / měsíc** (lifetime YouTube ÷ měsíce od vydání; nové díly mohou mít vyšší průměr kvůli startu). U pořadů **Ø zhlédnutí / epizoda** a podíl. V sidebaru lze vyhledat konkrétní pořad nebo epizodu/díl.
 8. **Průměrná zhlédnutí na epizodu v čase** – kumulativní průměr YouTube zhlédnutí pořadu: zhlédnutí do měsíce M ÷ počet epizod **vydaných do M**. Lifetime průměr v tabulce pořadů = lifetime zhlédnutí ÷ počet epizod (intenzita na díl vs. celkový objem). Měsíc vydání bere `Datum_publikování`; když chybí, první měsíc s nenulovým zhlédnutím v `YouTube měsíčně.csv`. Po aktualizaci měsíčních dat se křivka posune automaticky.
 
 Grafy jsou interaktivní (tooltip po najetí myší). U tabulek lze v rozhraní Streamlit často data zkopírovat nebo stáhnout (záleží na verzi prohlížeče a Streamlitu).
